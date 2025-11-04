@@ -283,10 +283,10 @@ export default function DashboardPage() {
     
     <div className="min-h-screen bg-gray-50 flex w-full max-w-full">
       {/* Navbar */}
-       <Sidebar isAdmin={user?.role==='Admin'} />
-       <div className='flex-1 flex flex-col' >
+       <Sidebar isAdmin={true} />
+       <div className='flex-1 flex flex-col max-w-full w-full' >
       <nav className="bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 border-b sticky top-0 z-50 !w-[100%]">
-        <div className="w-full px-4 sm:px-6 lg:px-8">
+        <div className="w-full px-4 sm:px-6 lg:px-8 max-w-full mx-auto">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-3 min-w-0">
               <div className="h-8 w-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold">PS</div>
@@ -313,7 +313,7 @@ export default function DashboardPage() {
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-full w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Enhanced Filters Section */}
         <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg border border-gray-200 p-6 mb-8">
           <div className="flex items-center justify-between mb-4">

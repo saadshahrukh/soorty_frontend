@@ -390,7 +390,7 @@ export default function OrdersPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      <Sidebar isAdmin={user?.role==='Admin'} />
+      <Sidebar isAdmin={true} />
       <div className="flex-1">
         <nav className="bg-white border-b sticky top-0 z-50">
           <div className="px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
