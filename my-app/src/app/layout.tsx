@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import ThemeToggle from "@/components/ThemeToggle";
 import Toaster from "@/components/Toaster";
 import ClientSessionGuard from "@/components/ClientSessionGuard";
 import ReminderWatcher from "@/components/ReminderWatcher";
@@ -35,9 +34,6 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <div className="fixed right-4 bottom-4 z-50">
-          <ThemeToggle />
-        </div>
         <Toaster />
         <ClientSessionGuard />
         <ReminderWatcher />
