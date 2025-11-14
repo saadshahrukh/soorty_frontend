@@ -110,6 +110,18 @@ export default function OrdersPage() {
     }
   }, [isAuthenticated]);
 
+  // Refresh orders when a Shopify import completes elsewhere in the app
+  useEffect(() => {
+    const handler = (e: any) => {
+      // optionally inspect e.detail for more info
+      fetchOrders();
+      // show a friendly toast
+      try { const { toast } = require('@/store/toastStore'); toast.success('Orders refreshed after Shopify import'); } catch {}
+    };
+    window.addEventListener('shopify:imported', handler as EventListener);
+    return () => window.removeEventListener('shopify:imported', handler as EventListener);
+  }, []);
+
   // Debounced suggestions for orderId (Bill No)
   useEffect(() => {
     let id: any;
@@ -390,7 +402,7 @@ export default function OrdersPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      <Sidebar isAdmin={true} />
+      <Sidebar isAdmin={user?.role==='Admin'} />
       <div className="flex-1">
         <nav className="bg-white border-b sticky top-0 z-50">
           <div className="px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">

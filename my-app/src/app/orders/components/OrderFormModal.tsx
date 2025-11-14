@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Order } from '@/store/orderStore';
 import api from '@/lib/api';
+import { toast } from '@/store/toastStore';
 import { FormData } from '../page'; 
 interface OrderFormModalProps {
   showForm: boolean;
@@ -19,7 +20,7 @@ export default function OrderFormModal({
   setFormData,
   handleSubmit
 }: OrderFormModalProps) {
-  const [products, setProducts] = useState<{ _id: string; name: string; basePrice: number; baseCost?: number }[]>([]);
+  const [products, setProducts] = useState<{ _id: string; name: string; basePrice: number; baseCost?: number; stock?: number; priceTiers?: { label: string; price: number }[] }[]>([]);
   const [productQuery, setProductQuery] = useState('');
   const [loadingLookup, setLoadingLookup] = useState(false);
 
@@ -39,7 +40,18 @@ export default function OrderFormModal({
   useEffect(() => {
     const items = formData.products || [];
     if (items.length > 0) {
-      const totalSelling = items.reduce((s: number, it: any) => s + (Number(it.basePrice || it.sellingPrice || 0) * Number(it.quantity || 0)), 0);
+      const totalSelling = items.reduce((s: number, it: any) => {
+        const qty = Number(it.quantity || 0) || 0;
+        let unitPrice = 0;
+        // priceTiers with selectedTier take precedence
+        if (it.priceTiers && Array.isArray(it.priceTiers) && (it.selectedTier !== undefined) && it.selectedTier >= 0) {
+          unitPrice = Number(it.priceTiers[it.selectedTier]?.price || 0);
+        } else {
+          // sellingPrice is stored as unit price
+          unitPrice = Number(it.sellingPrice || it.basePrice || 0);
+        }
+        return s + (unitPrice * qty);
+      }, 0 as number);
       const totalCost = items.reduce((s: number, it: any) => s + (Number(it.baseCost || it.costPrice || 0) * Number(it.quantity || 0)), 0);
       setFormData((prev: FormData) => ({ ...prev, sellingPrice: Math.round(totalSelling * 100) / 100, costPrice: Math.round(totalCost * 100) / 100 }));
     }
@@ -93,8 +105,8 @@ export default function OrderFormModal({
       const selected = products.find(p => p.name === formData.productServiceName);
       if (selected) {
         const qty = Math.max(1, Number(formData.quantity || 0));
-        const price = (selected.basePrice || 0) * qty;
-        setFormData((prev: FormData) => ({ ...prev, sellingPrice: price, costPrice: (selected.baseCost || 0) * qty }));
+        // sellingPrice and costPrice are unit prices in our model
+        setFormData((prev: FormData) => ({ ...prev, sellingPrice: Number(selected.basePrice || 0), costPrice: Number(selected.baseCost || 0) }));
       }
     }
   }, [formData.productServiceName, formData.quantity, formData.businessType, products]);
@@ -212,16 +224,41 @@ export default function OrderFormModal({
               <div
                 key={p._id}
                 onClick={() => {
+                  // prevent adding if out of stock
+                  if ((p.stock || 0) <= 0) {
+                    toast.error('Product is out of stock');
+                    return;
+                  }
                   // add or increment product in formData.products
                   setFormData((prev: FormData) => {
-                    const items = (prev.products || []).slice();
+                    const items = (prev.products || []).slice() as any[];
                     const idx = items.findIndex(i => i.productId === p._id);
                     if (idx >= 0) {
-                      items[idx].quantity = Number(items[idx].quantity || 0) + 1;
-                      items[idx].sellingPrice = Number(items[idx].basePrice || p.basePrice) * items[idx].quantity;
-                      items[idx].costPrice = Number(items[idx].baseCost || p.baseCost || 0) * items[idx].quantity;
+                      // do not exceed stock
+                      const currentQty = Number(items[idx].quantity || 0);
+                      const newQty = Math.min((p.stock || Infinity), currentQty + 1);
+                      items[idx].quantity = newQty;
+                      // sellingPrice and costPrice represent unit prices and should not be multiplied here
+                      items[idx].sellingPrice = Number(items[idx].sellingPrice || items[idx].basePrice || p.basePrice || 0);
+                      items[idx].costPrice = Number(items[idx].baseCost || p.baseCost || 0);
                     } else {
-                      items.push({ productId: p._id, name: p.name, quantity: 1, basePrice: p.basePrice, baseCost: p.baseCost || 0, sellingPrice: p.basePrice, costPrice: p.baseCost || 0, discount: 0 });
+                      // build composite tiers: default (basePrice) + configured tiers
+                      const extraTiers = (p.priceTiers || []).map((t: any) => ({ label: t.label, price: Number(t.price || 0) }));
+                      const compositeTiers = [{ label: 'Default', price: Number(p.basePrice || 0) }, ...extraTiers];
+                      const unitPrice = compositeTiers[0].price || 0;
+                      items.push({
+                        productId: p._id,
+                        name: p.name,
+                        quantity: 1,
+                        basePrice: p.basePrice,
+                        baseCost: p.baseCost || 0,
+                        sellingPrice: unitPrice,
+                        costPrice: p.baseCost || 0,
+                        discount: 0,
+                        availableStock: p.stock || 0,
+                        priceTiers: compositeTiers,
+                        selectedTier: 0
+                      } as any);
                     }
                     return { ...prev, products: items };
                   });
@@ -229,8 +266,11 @@ export default function OrderFormModal({
                 }}
                 className="px-4 py-3 cursor-pointer hover:bg-indigo-50 flex justify-between items-center transition"
               >
-                <span className="font-medium text-gray-800">{p.name}</span>
-                <span className="text-xs text-gray-500">Base: {p.basePrice}</span>
+                <div>
+                  <div className="font-medium text-gray-800">{p.name}</div>
+                  <div className="text-xs text-gray-500">Base: {p.basePrice} • Stock: {(p.stock || 0)}</div>
+                </div>
+                <div className="text-xs text-gray-500">{(p.priceTiers && p.priceTiers.length > 0) ? `${p.priceTiers[0].label}: ${p.priceTiers[0].price}` : ''}</div>
               </div>
             ))}
           </div>
@@ -257,19 +297,34 @@ export default function OrderFormModal({
                 <input
                   type="number"
                   value={it.quantity}
-                  min={0}
+                  min={1}
+                  max={it.availableStock || 999999}
                   onChange={(e) => {
-                    const val = Number(e.target.value || 0);
+                    const val = Math.max(1, Number(e.target.value || 1));
+                    const capped = Math.min(val, it.availableStock || val);
                     setFormData((prev: FormData) => {
-                      const items = (prev.products || []).slice();
-                      items[idx].quantity = val;
-                      items[idx].sellingPrice = Number(items[idx].basePrice || 0) * val;
-                      items[idx].costPrice = Number(items[idx].baseCost || 0) * val;
+                      const items = (prev.products || []).slice() as any[];
+                      items[idx].quantity = capped;
+                      // if price tiers exist, keep selected tier price, else use basePrice
+                      if (items[idx].priceTiers && items[idx].priceTiers.length > 0 && items[idx].selectedTier >= 0) {
+                        const sel = items[idx].selectedTier || 0;
+                        const tierPrice = Number(items[idx].priceTiers[sel]?.price || items[idx].basePrice || 0);
+                        // store unit price
+                        items[idx].sellingPrice = tierPrice;
+                      } else {
+                        // store unit price
+                        items[idx].sellingPrice = Number(items[idx].basePrice || 0);
+                      }
+                      // costPrice is unit cost
+                      items[idx].costPrice = Number(items[idx].baseCost || 0);
                       return { ...prev, products: items };
                     });
                   }}
                   className="w-full px-2 py-1 border rounded"
                 />
+                {it.availableStock !== undefined && (
+                  <div className="text-xs text-gray-500">Stock: {it.availableStock}</div>
+                )}
               </div>
               <div className="w-24">
                 <label className="text-xs text-gray-600">Disc</label>
@@ -280,17 +335,57 @@ export default function OrderFormModal({
                   onChange={(e) => {
                     const val = Number(e.target.value || 0);
                     setFormData((prev: FormData) => {
-                      const items = (prev.products || []).slice();
+                      const items = (prev.products || []).slice() as any[];
                       items[idx].discount = val;
                       return { ...prev, products: items };
                     });
                   }}
                   className="w-full px-2 py-1 border rounded"
                 />
+                {it.priceTiers && it.priceTiers.length > 0 && (
+                  <div className="mt-2">
+                    <label className="text-xs text-gray-600">Price Tier</label>
+                    <select
+                      value={it.selectedTier || 0}
+                      onChange={(e) => {
+                        const sel = Number(e.target.value || 0);
+                        setFormData((prev: FormData) => {
+                          const items = (prev.products || []).slice() as any[];
+                          items[idx].selectedTier = sel;
+                          const tierPrice = Number(items[idx].priceTiers[sel]?.price || items[idx].basePrice || 0);
+                          // store unit price when a tier is selected
+                          items[idx].sellingPrice = tierPrice;
+                          return { ...prev, products: items };
+                        });
+                      }}
+                      className="w-full px-2 py-1 border rounded"
+                    >
+                      {it.priceTiers.map((pt: any, i: number) => (
+                        <option key={i} value={i}>{pt.label} — {pt.price}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
-              <div className="w-28 text-right">
+                <div className="w-28 text-right">
                 <div className="text-xs text-gray-600">Line</div>
-                <div className="font-medium">{Math.round(((Number(it.basePrice || it.sellingPrice || 0) * Number(it.quantity || 0)) - Number(it.discount || 0)) * 100) / 100}</div>
+                <div className="font-medium">{
+                  (() => {
+                    const qty = Number(it.quantity || 0) || 0;
+                    let lineTotal = 0;
+                    if (it.priceTiers && Array.isArray(it.priceTiers) && (it.selectedTier !== undefined)) {
+                      const unit = Number(it.priceTiers[it.selectedTier]?.price || 0);
+                      lineTotal = unit * qty;
+                    } else if (it.sellingPrice !== undefined) {
+                      // sellingPrice is stored as unit price
+                      lineTotal = Number(it.sellingPrice || 0) * qty;
+                    } else {
+                      lineTotal = Number(it.basePrice || 0) * qty;
+                    }
+                    lineTotal = lineTotal - Number(it.discount || 0);
+                    return Math.round(lineTotal * 100) / 100;
+                  })()
+                }</div>
               </div>
               <button type="button" onClick={() => setFormData((prev: FormData) => ({ ...prev, products: (prev.products || []).filter((_, i) => i !== idx) }))} className="px-2 py-1 text-red-600">Remove</button>
             </div>
