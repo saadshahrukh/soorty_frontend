@@ -1,9 +1,9 @@
-const { connectToDatabase } = require('../../../../../src/lib/mongodb');
-const { requireAuth } = require('../../../../../src/lib/nextAuth');
+const { connectToDatabase } = require('../../../../../lib/mongodb');
+const { requireAuth } = require('../../../../../lib/nextAuth');
 const mongoose = require('mongoose');
-const Warehouse = require('../../../../../api/models/Warehouse');
-const Product = require('../../../../../api/models/Product');
-const StockAllocation = require('../../../../../api/models/StockAllocation');
+const Warehouse = require('../../../../../../api/models/Warehouse');
+const Product = require('../../../../../../api/models/Product');
+const StockAllocation = require('../../../../../../api/models/StockAllocation');
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method not allowed' });

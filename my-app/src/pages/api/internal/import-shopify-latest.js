@@ -1,8 +1,8 @@
-const { connectToDatabase } = require('../../../src/lib/mongodb');
-const { requireAuth } = require('../../../src/lib/nextAuth');
+const { connectToDatabase } = require('../../../lib/mongodb');
+const { requireAuth } = require('../../../lib/nextAuth');
 const axios = require('axios');
-const Customer = require('../../../api/models/Customer');
-const Order = require('../../../api/models/Order');
+const Customer = require('../../../../api/models/Customer');
+const Order = require('../../../../api/models/Order');
 
 async function requestWithRetry(config, retries = 1, delayMs = 500) {
   try {

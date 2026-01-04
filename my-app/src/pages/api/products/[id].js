@@ -1,6 +1,6 @@
-const { connectToDatabase } = require('../../../src/lib/mongodb');
-const { requireAuth } = require('../../../src/lib/nextAuth');
-const Product = require('../../../api/models/Product');
+const { connectToDatabase } = require('../../../lib/mongodb');
+const { requireAuth } = require('../../../lib/nextAuth');
+const Product = require('../../../../api/models/Product');
 
 module.exports = async (req, res) => {
   await connectToDatabase();

@@ -1,10 +1,10 @@
 const mongoose = require('mongoose');
-const { connectToDatabase } = require('../../../src/lib/mongodb');
-const { requireAuth } = require('../../../src/lib/nextAuth');
-const Order = require('../../../api/models/Order');
-const Customer = require('../../../api/models/Customer');
-const Product = require('../../../api/models/Product');
-const StockAllocation = require('../../../api/models/StockAllocation');
+const { connectToDatabase } = require('../../../lib/mongodb');
+const { requireAuth } = require('../../../lib/nextAuth');
+const Order = require('../../../../api/models/Order');
+const Customer = require('../../../../api/models/Customer');
+const Product = require('../../../../api/models/Product');
+const StockAllocation = require('../../../../api/models/StockAllocation');
 
 async function generateUniqueOrderId() {
   let id;

@@ -1,5 +1,5 @@
-const { connectToDatabase } = require('../../../src/lib/mongodb');
-const User = require('../../../api/models/User');
+const { connectToDatabase } = require('../../../lib/mongodb');
+const User = require('../../../../api/models/User');
 const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this-in-production';
