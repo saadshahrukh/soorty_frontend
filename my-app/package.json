@@ -5,8 +5,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
-    "start": "node server.js",
-    "server": "node server.js",
+    "start": "next start",
     "create-admin": "node scripts/createAdmin.js",
     "lint": "eslint"
   },
@@ -29,7 +28,6 @@
     "react-hook-form": "^7.50.0",
     "recharts": "^2.12.0",
     "zustand": "^4.5.0"
-    ,"serverless-http": "^3.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
