@@ -23,11 +23,15 @@ export default function OrderFormModal({
   const [products, setProducts] = useState<{ _id: string; name: string; basePrice: number; baseCost?: number; stock?: number; priceTiers?: { label: string; price: number }[] }[]>([]);
   const [productQuery, setProductQuery] = useState('');
   const [loadingLookup, setLoadingLookup] = useState(false);
+  const [warehouses, setWarehouses] = useState<{ _id: string; name: string }[]>([]);
 
   useEffect(() => {
     const loadProducts = async () => {
       if (formData.businessType === 'Dates') {
-        const { data } = await api.get('/products', { params: { businessType: 'Dates', q: productQuery || undefined } });
+        const params: any = { businessType: 'Dates' };
+        if (productQuery) params.q = productQuery;
+        if (formData.warehouseId) params.warehouseId = formData.warehouseId;
+        const { data } = await api.get('/products', { params });
         setProducts(data);
       } else {
         setProducts([]);
@@ -35,6 +39,21 @@ export default function OrderFormModal({
     };
     loadProducts();
   }, [formData.businessType, productQuery, showForm]);
+
+  useEffect(() => {
+    // load warehouses for selection
+    (async () => {
+      try {
+        const { data } = await api.get('/warehouses');
+        setWarehouses(data || []);
+        if (data && data.length > 0 && !formData.warehouseId) {
+          setFormData((prev: any) => ({ ...prev, warehouseId: data[0]._id }));
+        }
+      } catch (e) {
+        // ignore
+      }
+    })();
+  }, [showForm]);
 
   // When products array changes, compute aggregated sellingPrice and costPrice
   useEffect(() => {
@@ -174,6 +193,20 @@ export default function OrderFormModal({
               <option value="Travel">Travel</option>
               <option value="Dates">Dates</option>
               <option value="Belts">Belts</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Warehouse</label>
+            <select
+              value={formData.warehouseId || ''}
+              onChange={(e) => setFormData({ ...formData, warehouseId: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+            >
+              <option value="">Default Warehouse</option>
+              {warehouses.map(w => (
+                <option key={w._id} value={w._id}>{w.name}</option>
+              ))}
             </select>
           </div>
 

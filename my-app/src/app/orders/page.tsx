@@ -29,6 +29,7 @@ type BusinessType = 'Travel' | 'Dates' | 'Belts';
     costPrice: number;
     discount?: number;
   }>;
+    warehouseId?: string;
   // Backwards-compatible single-product fields
   productServiceName: string;
   quantity: number;
@@ -92,7 +93,8 @@ export default function OrdersPage() {
     deliveryPaidByCustomer: true,
     orderDiscount: 0,
     customerSupplierName: '',
-    remarks: ''
+    remarks: '',
+    warehouseId: ''
   });
 
   // Delete-by-filter modal state
