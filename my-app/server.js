@@ -79,7 +79,12 @@ app.use('/internal', internalRoutes);
 app.use('/api/expenses', expensesRoutes);
 app.use('/api/stock', stockRoutes);
 
-const PORT = process.env.PORT;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`);
-});
+const PORT = process.env.PORT || 3000;
+
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+} else {
+  module.exports = app;
+}
