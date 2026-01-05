@@ -25,11 +25,6 @@ module.exports = async (req, res) => {
     
     if (domain === 'expenses') {
       if (endpoint === 'index') return require('../../server/api_impl/expenses/index.js')(req, res);
-      if (endpoint === '[id]' || slug[2]) {
-        req.query.id = slug[2] || req.query.id;
-        return require('../../server/api_impl/expenses/[id].js')(req, res);
-      }
-      if (endpoint === 'totals') return require('../../server/api_impl/expenses/totals.js')(req, res);
     }
     
     if (domain === 'internal') {
@@ -58,13 +53,7 @@ module.exports = async (req, res) => {
     if (domain === 'stock') {
       if (endpoint === 'transfers') return require('../../server/api_impl/stock/transfers.js')(req, res);
       if (endpoint === 'transfer') return require('../../server/api_impl/stock/transfer.js')(req, res);
-      if (endpoint === 'product' && slug[2]) {
-        const productId = slug[2];
-        req.query.productId = productId;
-        if (slug[3] === 'allocate') return require('../../server/api_impl/stock/product/[productId]/allocate.js')(req, res);
-        if (slug[3] === 'allocation') return require('../../server/api_impl/stock/product/[productId]/allocation.js')(req, res);
-        return require('../../server/api_impl/stock/product/[productId].js')(req, res);
-      }
+      if (endpoint === 'product') return require('../../server/api_impl/stock/product.js')(req, res);
     }
     
     if (domain === 'summary') {
@@ -74,7 +63,10 @@ module.exports = async (req, res) => {
     
     if (domain === 'users') {
       if (endpoint === 'index') return require('../../server/api_impl/users/index.js')(req, res);
+      if (endpoint === 'me') return require('../../server/api_impl/users/me.js')(req, res);
       if (endpoint === 'audit-logs') return require('../../server/api_impl/users/audit-logs.js')(req, res);
+      if (endpoint === 'password') return require('../../server/api_impl/users/password.js')(req, res);
+      if (endpoint === 'update') return require('../../server/api_impl/users/update.js')(req, res);
     }
     
     if (domain === 'warehouses') {
@@ -83,6 +75,9 @@ module.exports = async (req, res) => {
         req.query.id = slug[2] || req.query.id;
         return require('../../server/api_impl/warehouses/[id].js')(req, res);
       }
+      if (endpoint === 'create') return require('../../server/api_impl/warehouses/create.js')(req, res);
+      if (endpoint === 'update') return require('../../server/api_impl/warehouses/update.js')(req, res);
+      if (endpoint === 'delete') return require('../../server/api_impl/warehouses/delete.js')(req, res);
     }
     
     return res.status(404).json({ message: `Endpoint /${domain}/${endpoint} not found` });
