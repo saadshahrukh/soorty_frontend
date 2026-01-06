@@ -644,14 +644,14 @@ export default function DashboardPage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             {(['Travel','Dates','Belts'] as const).map(b => {
-              const g = (computedByBusiness.groups as any)[b];
+              const g = (computedByBusiness?.groups as any)?.[b] || { sales: 0, cost: 0, profit: 0, orderCount: 0, pending: 0, loss: 0 };
               return (
                 <div key={b} className="border rounded-lg p-4">
                   <div className="flex justify-between">
                     <span className="font-semibold">{b}</span>
-                    <span className="text-sm text-gray-500">Orders: {g.orderCount}</span>
+                    <span className="text-sm text-gray-500">Orders: {g?.orderCount || 0}</span>
                   </div>
-                  <div className="mt-2 text-sm text-gray-700">Pending: {formatCurrency(g.pending)}</div>
+                  <div className="mt-2 text-sm text-gray-700">Pending: {formatCurrency(g?.pending || 0)}</div>
                 </div>
               );
             })}
