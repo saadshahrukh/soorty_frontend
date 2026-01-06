@@ -137,32 +137,42 @@ export default function DashboardPage() {
       Dates: { sales: 0, cost: 0, profit: 0, pending: 0, loss: 0, orderCount: 0 },
       Belts: { sales: 0, cost: 0, profit: 0, pending: 0, loss: 0, orderCount: 0 },
     };
+    
+    // Add safety check for orders array
+    if (!orders || !Array.isArray(orders)) {
+      return { groups, totals: { sales: 0, cost: 0, profit: 0, pending: 0, loss: 0 } };
+    }
+    
     orders.forEach(o => {
+      if (!o || !o.businessType) return; // Skip invalid orders
       const g = groups[o.businessType];
-      g.sales += o.sellingPrice;
-      g.cost += o.costPrice;
-      g.profit += o.profit || (o.sellingPrice - o.costPrice);
+      if (!g) return; // Skip if business type not in groups
+      
+      g.sales += o.sellingPrice ?? 0;
+      g.cost += o.costPrice ?? 0;
+      g.profit += o.profit ?? (((o.sellingPrice ?? 0) - (o.costPrice ?? 0)));
       g.orderCount += 1;
       
       // Calculate pending amount
       if (o.paymentStatus !== 'Paid') {
         if (o.paymentStatus === 'Partial') {
           const order: any = o;
-          g.pending += order.partialRemainingAmount || (o.sellingPrice * 0.5);
+          g.pending += (order.partialRemainingAmount ?? ((o.sellingPrice ?? 0) * 0.5));
         } else {
-          g.pending += o.sellingPrice;
+          g.pending += o.sellingPrice ?? 0;
         }
       }
       
       // Calculate loss (cost not covered by payments)
       const order: any = o;
-      const tax = (order.taxPercent || 0) / 100;
-      const finalAmount = Math.round((o.sellingPrice * (1 + tax)) * 100) / 100;
+      const tax = ((order.taxPercent ?? 0)) / 100;
+      const finalAmount = Math.round((((o.sellingPrice ?? 0) * (1 + tax)) * 100)) / 100;
       const paidAmount = o.paymentStatus === 'Paid' ? finalAmount : 
-                         (o.paymentStatus === 'Partial' ? (order.partialPaidAmount || 0) : 0);
-      const orderLoss = Math.max(0, o.costPrice - paidAmount);
+                         (o.paymentStatus === 'Partial' ? ((order.partialPaidAmount ?? 0)) : 0);
+      const orderLoss = Math.max(0, ((o.costPrice ?? 0) - paidAmount));
       g.loss += orderLoss;
     });
+    
     const totals = Object.values(groups).reduce((acc, g) => ({
       sales: acc.sales + g.sales,
       cost: acc.cost + g.cost,
@@ -174,8 +184,9 @@ export default function DashboardPage() {
   }, [orders]);
 
   const businessOrders = (business: 'Travel' | 'Dates' | 'Belts' | 'All'): Order[] => {
-    if (business === 'All') return orders;
-    return orders.filter(o => o.businessType === business);
+    const safeOrders = orders || [];
+    if (business === 'All') return safeOrders;
+    return safeOrders.filter(o => o?.businessType === business);
   };
   const [page, setPage] = useState(1);
   const pageSize = 10;
@@ -200,24 +211,24 @@ export default function DashboardPage() {
       const data = [
         { 
           name: 'Travel', 
-          sales: computedByBusiness.groups.Travel?.sales || 0, 
-          cost: computedByBusiness.groups.Travel?.cost || 0, 
-          profit: computedByBusiness.groups.Travel?.profit || 0, 
-          loss: computedByBusiness.groups.Travel?.loss || 0 
+          sales: computedByBusiness.groups.Travel?.sales ?? 0, 
+          cost: computedByBusiness.groups.Travel?.cost ?? 0, 
+          profit: computedByBusiness.groups.Travel?.profit ?? 0, 
+          loss: computedByBusiness.groups.Travel?.loss ?? 0 
         },
         { 
           name: 'Dates', 
-          sales: computedByBusiness.groups.Dates?.sales || 0, 
-          cost: computedByBusiness.groups.Dates?.cost || 0, 
-          profit: computedByBusiness.groups.Dates?.profit || 0, 
-          loss: computedByBusiness.groups.Dates?.loss || 0 
+          sales: computedByBusiness.groups.Dates?.sales ?? 0, 
+          cost: computedByBusiness.groups.Dates?.cost ?? 0, 
+          profit: computedByBusiness.groups.Dates?.profit ?? 0, 
+          loss: computedByBusiness.groups.Dates?.loss ?? 0 
         },
         { 
           name: 'Belts', 
-          sales: computedByBusiness.groups.Belts?.sales || 0, 
-          cost: computedByBusiness.groups.Belts?.cost || 0, 
-          profit: computedByBusiness.groups.Belts?.profit || 0, 
-          loss: computedByBusiness.groups.Belts?.loss || 0 
+          sales: computedByBusiness.groups.Belts?.sales ?? 0, 
+          cost: computedByBusiness.groups.Belts?.cost ?? 0, 
+          profit: computedByBusiness.groups.Belts?.profit ?? 0, 
+          loss: computedByBusiness.groups.Belts?.loss ?? 0 
         },
       ];
       
@@ -232,24 +243,24 @@ export default function DashboardPage() {
       const data = [
         { 
           name: 'Travel', 
-          sales: summaryData.Travel?.sales || 0, 
-          cost: summaryData.Travel?.cost || 0, 
-          profit: summaryData.Travel?.profit || 0, 
-          loss: summaryData.Travel?.loss || 0 
+          sales: summaryData.Travel?.sales ?? 0, 
+          cost: summaryData.Travel?.cost ?? 0, 
+          profit: summaryData.Travel?.profit ?? 0, 
+          loss: summaryData.Travel?.loss ?? 0 
         },
         { 
           name: 'Dates', 
-          sales: summaryData.Dates?.sales || 0, 
-          cost: summaryData.Dates?.cost || 0, 
-          profit: summaryData.Dates?.profit || 0, 
-          loss: summaryData.Dates?.loss || 0 
+          sales: summaryData.Dates?.sales ?? 0, 
+          cost: summaryData.Dates?.cost ?? 0, 
+          profit: summaryData.Dates?.profit ?? 0, 
+          loss: summaryData.Dates?.loss ?? 0 
         },
         { 
           name: 'Belts', 
-          sales: summaryData.Belts?.sales || 0, 
-          cost: summaryData.Belts?.cost || 0, 
-          profit: summaryData.Belts?.profit || 0, 
-          loss: summaryData.Belts?.loss || 0 
+          sales: summaryData.Belts?.sales ?? 0, 
+          cost: summaryData.Belts?.cost ?? 0, 
+          profit: summaryData.Belts?.profit ?? 0, 
+          loss: summaryData.Belts?.loss ?? 0 
         },
       ];
       
@@ -265,14 +276,16 @@ export default function DashboardPage() {
   // Get display totals: ALWAYS use filtered orders data when filters are active
   // This ensures totals match what's shown in the graph and orders table
   const displayTotals = useMemo(() => {
+    const defaultTotals = { sales: 0, cost: 0, profit: 0, pending: 0, loss: 0 };
+    
     if (useFilteredData) {
       // Use computed totals from filtered orders
-      return computedByBusiness.totals;
-    } else if (summary) {
+      return computedByBusiness?.totals || defaultTotals;
+    } else if (summary?.totals) {
       // Use API summary totals only when NO filters are active
       return summary.totals;
     }
-    return { sales: 0, cost: 0, profit: 0, pending: 0, loss: 0 };
+    return defaultTotals;
   }, [useFilteredData, computedByBusiness, summary]);
 
   if (loading || summaryLoading) {
@@ -429,7 +442,7 @@ export default function DashboardPage() {
               </svg>
             </div>
             <p className="text-3xl font-bold text-green-700">
-              {formatCurrency(displayTotals.sales)}
+              {formatCurrency(displayTotals?.sales || 0)}
             </p>
             {hasFilters && <p className="text-xs text-green-600 mt-1">Filtered</p>}
           </div>
@@ -442,7 +455,7 @@ export default function DashboardPage() {
               </svg>
             </div>
             <p className="text-3xl font-bold text-red-700">
-              {formatCurrency(displayTotals.cost)}
+              {formatCurrency(displayTotals?.cost || 0)}
             </p>
             {hasFilters && <p className="text-xs text-red-600 mt-1">Filtered</p>}
           </div>
@@ -455,7 +468,7 @@ export default function DashboardPage() {
               </svg>
             </div>
             <p className="text-3xl font-bold text-blue-700">
-              {formatCurrency(displayTotals.profit)}
+              {formatCurrency(displayTotals?.profit || 0)}
             </p>
             {hasFilters && <p className="text-xs text-blue-600 mt-1">Filtered</p>}
           </div>
@@ -468,7 +481,7 @@ export default function DashboardPage() {
               </svg>
             </div>
             <p className="text-3xl font-bold text-yellow-700">
-              {formatCurrency(displayTotals.pending)}
+              {formatCurrency(displayTotals?.pending || 0)}
             </p>
             {hasFilters && <p className="text-xs text-yellow-600 mt-1">Filtered</p>}
           </div>
@@ -481,7 +494,7 @@ export default function DashboardPage() {
               </svg>
             </div>
             <p className="text-3xl font-bold text-rose-700">
-              {formatCurrency(displayTotals.loss)}
+              {formatCurrency(displayTotals?.loss || 0)}
             </p>
             {hasFilters && <p className="text-xs text-rose-600 mt-1">Filtered</p>}
           </div>
@@ -570,8 +583,8 @@ export default function DashboardPage() {
           {['Travel','Dates','Belts'].map((business) => {
             const summaryData = summary?.summary || {};
             const data = useFilteredData
-              ? (computedByBusiness?.groups as any)?.[business] || { sales: 0, cost: 0, profit: 0, orderCount: 0 }
-              : (summary ? summaryData[business as keyof typeof summaryData] || { sales: 0, cost: 0, profit: 0, orderCount: 0 } : (computedByBusiness?.groups as any)?.[business] || { sales: 0, cost: 0, profit: 0, orderCount: 0 });
+              ? (computedByBusiness?.groups as any)?.[business] || { sales: 0, cost: 0, profit: 0, orderCount: 0, pending: 0, loss: 0 }
+              : (summary ? summaryData[business as keyof typeof summaryData] || { sales: 0, cost: 0, profit: 0, orderCount: 0, pending: 0, loss: 0 } : (computedByBusiness?.groups as any)?.[business] || { sales: 0, cost: 0, profit: 0, orderCount: 0, pending: 0, loss: 0 });
             
             const isActive = activeBusiness === business;
             const businessColors = {
@@ -597,19 +610,19 @@ export default function DashboardPage() {
                 <div className="space-y-3">
                   <div className="flex justify-between items-center bg-white/60 rounded-lg p-2">
                     <span className="text-sm font-medium text-gray-700">Sales:</span>
-                    <span className="font-bold text-green-700">{formatCurrency(data?.sales || 0)}</span>
+                    <span className="font-bold text-green-700">{formatCurrency(data?.sales ?? 0)}</span>
                   </div>
                   <div className="flex justify-between items-center bg-white/60 rounded-lg p-2">
                     <span className="text-sm font-medium text-gray-700">Cost:</span>
-                    <span className="font-bold text-red-700">{formatCurrency(data?.cost || 0)}</span>
+                    <span className="font-bold text-red-700">{formatCurrency(data?.cost ?? 0)}</span>
                   </div>
                   <div className="flex justify-between items-center bg-white/60 rounded-lg p-2">
                     <span className="text-sm font-medium text-gray-700">Profit:</span>
-                    <span className="font-bold text-blue-700">{formatCurrency(data?.profit || 0)}</span>
+                    <span className="font-bold text-blue-700">{formatCurrency(data?.profit ?? 0)}</span>
                   </div>
                   <div className="flex justify-between items-center bg-white/60 rounded-lg p-2">
                     <span className="text-sm font-medium text-gray-700">Orders:</span>
-                    <span className="font-bold text-gray-900">{data?.orderCount || 0}</span>
+                    <span className="font-bold text-gray-900">{data?.orderCount ?? 0}</span>
                   </div>
                   <div className="flex gap-2 pt-3 border-t border-gray-200">
                     <button
@@ -649,9 +662,9 @@ export default function DashboardPage() {
                 <div key={b} className="border rounded-lg p-4">
                   <div className="flex justify-between">
                     <span className="font-semibold">{b}</span>
-                    <span className="text-sm text-gray-500">Orders: {g?.orderCount || 0}</span>
+                    <span className="text-sm text-gray-500">Orders: {g?.orderCount ?? 0}</span>
                   </div>
-                  <div className="mt-2 text-sm text-gray-700">Pending: {formatCurrency(g?.pending || 0)}</div>
+                  <div className="mt-2 text-sm text-gray-700">Pending: {formatCurrency(g?.pending ?? 0)}</div>
                 </div>
               );
             })}
@@ -669,18 +682,25 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {orders
-                  .filter(o => o.paymentStatus !== 'Paid')
+                {(orders || [])
+                  .filter(o => o?.paymentStatus !== 'Paid')
                   .map(o => {
-                    const pendingAmt = o.paymentStatus === 'Partial' ? o.sellingPrice * 0.5 : o.sellingPrice;
+                    const safeBusiness = o?.businessType || 'Unknown';
+                    const safeOrderId = o?.orderId || '-';
+                    const safeCustomerName = o?.customerSupplierName || '-';
+                    const safePaymentStatus = o?.paymentStatus || 'Unknown';
+                    const safeSellingPrice = o?.sellingPrice ?? 0;
+                    const safeCreatedAt = o?.createdAt ? new Date(o.createdAt).toLocaleString() : '-';
+                    const pendingAmt = safePaymentStatus === 'Partial' ? safeSellingPrice * 0.5 : safeSellingPrice;
+                    
                     return (
-                      <tr key={o._id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">{o.businessType}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">{o.orderId}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">{o.customerSupplierName}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">{o.paymentStatus}</td>
+                      <tr key={o?._id || Math.random()} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{safeBusiness}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{safeOrderId}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{safeCustomerName}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{safePaymentStatus}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-amber-600">{formatCurrency(pendingAmt)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(o.createdAt).toLocaleString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{safeCreatedAt}</td>
                       </tr>
                     );
                   })}
@@ -718,33 +738,41 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {businessOrders(activeBusiness).slice((page-1)*pageSize, page*pageSize).map((order) => (
-                  <tr key={order._id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        order.businessType === 'Travel' ? 'bg-blue-100 text-blue-800' :
-                        order.businessType === 'Dates' ? 'bg-green-100 text-green-800' :
-                        'bg-purple-100 text-purple-800'
-                      }`}>
-                        {order.businessType}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{order.orderId}</td>
-                    <td className="px-6 py-4 text-sm text-gray-900">{order.productServiceName}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        order.paymentStatus === 'Paid' ? 'bg-green-100 text-green-800' :
-                        order.paymentStatus === 'Unpaid' ? 'bg-red-100 text-red-800' :
-                        'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {order.paymentStatus}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-blue-600">
-                      {formatCurrency(order.profit)}
-                    </td>
-                  </tr>
-                ))}
+                {(businessOrders(activeBusiness) || []).slice((page-1)*pageSize, page*pageSize).map((order) => {
+                  const safeBusiness = order?.businessType || 'Unknown';
+                  const safeOrderId = order?.orderId || '-';
+                  const safeProductName = order?.productServiceName || '-';
+                  const safePaymentStatus = order?.paymentStatus || 'Unknown';
+                  const safeProfit = order?.profit ?? 0;
+                  
+                  return (
+                    <tr key={order?._id || Math.random()} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          safeBusiness === 'Travel' ? 'bg-blue-100 text-blue-800' :
+                          safeBusiness === 'Dates' ? 'bg-green-100 text-green-800' :
+                          'bg-purple-100 text-purple-800'
+                        }`}>
+                          {safeBusiness}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{safeOrderId}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{safeProductName}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          safePaymentStatus === 'Paid' ? 'bg-green-100 text-green-800' :
+                          safePaymentStatus === 'Unpaid' ? 'bg-red-100 text-red-800' :
+                          'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {safePaymentStatus}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-blue-600">
+                        {formatCurrency(safeProfit)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
