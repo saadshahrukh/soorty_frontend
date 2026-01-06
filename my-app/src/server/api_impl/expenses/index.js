@@ -18,6 +18,20 @@ module.exports = async (req, res) => {
       res._jsonBody = created;
       return res.json(created);
     }
+    if (req.method === 'PUT') {
+      const { id } = req.query;
+      if (!id) return res.status(400).json({ message: 'ID required' });
+      const updated = await Expense.findByIdAndUpdate(id, req.body || {}, { new: true });
+      if (!updated) return res.status(404).json({ message: 'Expense not found' });
+      res._jsonBody = updated;
+      return res.json(updated);
+    }
+    if (req.method === 'DELETE') {
+      const { id } = req.query;
+      if (!id) return res.status(400).json({ message: 'ID required' });
+      await Expense.findByIdAndDelete(id);
+      return res.json({ message: 'Deleted' });
+    }
     return res.status(405).json({ message: 'Method not allowed' });
   } catch (e) {
     console.error('Expenses handler error', e);

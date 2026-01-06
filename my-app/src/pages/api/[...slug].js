@@ -25,8 +25,18 @@ module.exports = async (req, res) => {
     }
     
     if (domain === 'expenses') {
+      // GET /expenses or POST /expenses handled by index.js
       if (endpoint === 'index') return require('../../server/api_impl/expenses/index.js')(req, res);
+      if (req.method === 'GET' && !resourceId) return require('../../server/api_impl/expenses/index.js')(req, res);
+      if (req.method === 'POST' && !resourceId) return require('../../server/api_impl/expenses/index.js')(req, res);
+      // GET /expenses/totals endpoint
       if (endpoint === 'totals') return require('../../server/api_impl/expenses/totals.js')(req, res);
+      // Handle /expenses/ID routes (PUT, DELETE)
+      if (resourceId && !action) {
+        req.query.id = resourceId;
+        if (req.method === 'PUT') return require('../../server/api_impl/expenses/index.js')(req, res);
+        if (req.method === 'DELETE') return require('../../server/api_impl/expenses/index.js')(req, res);
+      }
     }
     
     if (domain === 'internal') {
