@@ -193,28 +193,31 @@ export default function DashboardPage() {
   const businessChartData = useMemo(() => {
     // When filters are active, use computedByBusiness (which uses filtered orders)
     if (useFilteredData) {
-      // Use computed data from filtered orders
+      // Use computed data from filtered orders with safety checks
+      if (!computedByBusiness || !computedByBusiness.groups) {
+        return [];
+      }
       const data = [
         { 
           name: 'Travel', 
-          sales: computedByBusiness.groups.Travel.sales, 
-          cost: computedByBusiness.groups.Travel.cost, 
-          profit: computedByBusiness.groups.Travel.profit, 
-          loss: computedByBusiness.groups.Travel.loss 
+          sales: computedByBusiness.groups.Travel?.sales || 0, 
+          cost: computedByBusiness.groups.Travel?.cost || 0, 
+          profit: computedByBusiness.groups.Travel?.profit || 0, 
+          loss: computedByBusiness.groups.Travel?.loss || 0 
         },
         { 
           name: 'Dates', 
-          sales: computedByBusiness.groups.Dates.sales, 
-          cost: computedByBusiness.groups.Dates.cost, 
-          profit: computedByBusiness.groups.Dates.profit, 
-          loss: computedByBusiness.groups.Dates.loss 
+          sales: computedByBusiness.groups.Dates?.sales || 0, 
+          cost: computedByBusiness.groups.Dates?.cost || 0, 
+          profit: computedByBusiness.groups.Dates?.profit || 0, 
+          loss: computedByBusiness.groups.Dates?.loss || 0 
         },
         { 
           name: 'Belts', 
-          sales: computedByBusiness.groups.Belts.sales, 
-          cost: computedByBusiness.groups.Belts.cost, 
-          profit: computedByBusiness.groups.Belts.profit, 
-          loss: computedByBusiness.groups.Belts.loss 
+          sales: computedByBusiness.groups.Belts?.sales || 0, 
+          cost: computedByBusiness.groups.Belts?.cost || 0, 
+          profit: computedByBusiness.groups.Belts?.profit || 0, 
+          loss: computedByBusiness.groups.Belts?.loss || 0 
         },
       ];
       
@@ -223,29 +226,30 @@ export default function DashboardPage() {
         return data.filter(item => item.name === activeBusiness);
       }
       return data;
-    } else if (summary) {
+    } else if (summary && summary.summary) {
       // Use API summary data only when NO filters are active
+      const summaryData = summary.summary || {};
       const data = [
         { 
           name: 'Travel', 
-          sales: summary.summary.Travel.sales, 
-          cost: summary.summary.Travel.cost, 
-          profit: summary.summary.Travel.profit, 
-          loss: summary.summary.Travel.loss 
+          sales: summaryData.Travel?.sales || 0, 
+          cost: summaryData.Travel?.cost || 0, 
+          profit: summaryData.Travel?.profit || 0, 
+          loss: summaryData.Travel?.loss || 0 
         },
         { 
           name: 'Dates', 
-          sales: summary.summary.Dates.sales, 
-          cost: summary.summary.Dates.cost, 
-          profit: summary.summary.Dates.profit, 
-          loss: summary.summary.Dates.loss 
+          sales: summaryData.Dates?.sales || 0, 
+          cost: summaryData.Dates?.cost || 0, 
+          profit: summaryData.Dates?.profit || 0, 
+          loss: summaryData.Dates?.loss || 0 
         },
         { 
           name: 'Belts', 
-          sales: summary.summary.Belts.sales, 
-          cost: summary.summary.Belts.cost, 
-          profit: summary.summary.Belts.profit, 
-          loss: summary.summary.Belts.loss 
+          sales: summaryData.Belts?.sales || 0, 
+          cost: summaryData.Belts?.cost || 0, 
+          profit: summaryData.Belts?.profit || 0, 
+          loss: summaryData.Belts?.loss || 0 
         },
       ];
       
@@ -564,9 +568,10 @@ export default function DashboardPage() {
         {/* Business Breakdown Cards */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {['Travel','Dates','Belts'].map((business) => {
+            const summaryData = summary?.summary || {};
             const data = useFilteredData
-              ? (computedByBusiness.groups as any)[business]
-              : (summary ? summary.summary[business as keyof typeof summary.summary] : (computedByBusiness.groups as any)[business]);
+              ? (computedByBusiness?.groups as any)?.[business] || { sales: 0, cost: 0, profit: 0, orderCount: 0 }
+              : (summary ? summaryData[business as keyof typeof summaryData] || { sales: 0, cost: 0, profit: 0, orderCount: 0 } : (computedByBusiness?.groups as any)?.[business] || { sales: 0, cost: 0, profit: 0, orderCount: 0 });
             
             const isActive = activeBusiness === business;
             const businessColors = {
