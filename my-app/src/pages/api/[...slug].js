@@ -8,10 +8,11 @@ module.exports = async (req, res) => {
 
   const domain = slug[0]; // e.g., 'auth', 'orders', 'products'
   const endpoint = slug[1] || 'index'; // e.g., 'login', 'me', or 'index'
+  const resourceId = slug[2]; // e.g., product ID for /stock/product/ID
+  const action = slug[3]; // e.g., 'allocate' for /stock/product/ID/allocate
   
   try {
     // Dynamic routing based on domain and endpoint
-    // Import implementations directly - static imports for Turbopack compatibility
     
     if (domain === 'auth') {
       if (endpoint === 'login') return require('../../server/api_impl/auth/login.js')(req, res);
@@ -25,6 +26,7 @@ module.exports = async (req, res) => {
     
     if (domain === 'expenses') {
       if (endpoint === 'index') return require('../../server/api_impl/expenses/index.js')(req, res);
+      if (endpoint === 'totals') return require('../../server/api_impl/expenses/totals.js')(req, res);
     }
     
     if (domain === 'internal') {
@@ -33,19 +35,29 @@ module.exports = async (req, res) => {
     }
     
     if (domain === 'orders') {
+      // GET /orders or POST /orders handled by index.js
       if (endpoint === 'index') return require('../../server/api_impl/orders/index.js')(req, res);
-      if (endpoint === '[id]' || slug[2]) {
-        req.query.id = slug[2] || req.query.id;
+      if (req.method === 'GET' && !resourceId) return require('../../server/api_impl/orders/index.js')(req, res);
+      if (req.method === 'POST' && !resourceId) return require('../../server/api_impl/orders/index.js')(req, res);
+      // GET /orders/search, POST /orders/search
+      if (endpoint === 'search') return require('../../server/api_impl/orders/search.js')(req, res);
+      // POST /orders/bulk
+      if (endpoint === 'bulk') return require('../../server/api_impl/orders/bulk.js')(req, res);
+      // Handle /orders/ID routes (GET, PUT, DELETE)
+      if (resourceId && !action) {
+        req.query.id = resourceId;
         return require('../../server/api_impl/orders/[id].js')(req, res);
       }
-      if (endpoint === 'search') return require('../../server/api_impl/orders/search.js')(req, res);
-      if (endpoint === 'bulk') return require('../../server/api_impl/orders/bulk.js')(req, res);
     }
     
     if (domain === 'products') {
+      // GET /products or POST /products handled by index.js
       if (endpoint === 'index') return require('../../server/api_impl/products/index.js')(req, res);
-      if (endpoint === '[id]' || slug[2]) {
-        req.query.id = slug[2] || req.query.id;
+      if (req.method === 'GET' && !resourceId) return require('../../server/api_impl/products/index.js')(req, res);
+      if (req.method === 'POST' && !resourceId) return require('../../server/api_impl/products/index.js')(req, res);
+      // Handle /products/ID routes (GET, PUT, DELETE)
+      if (resourceId && !action) {
+        req.query.id = resourceId;
         return require('../../server/api_impl/products/[id].js')(req, res);
       }
     }
@@ -53,7 +65,26 @@ module.exports = async (req, res) => {
     if (domain === 'stock') {
       if (endpoint === 'transfers') return require('../../server/api_impl/stock/transfers.js')(req, res);
       if (endpoint === 'transfer') return require('../../server/api_impl/stock/transfer.js')(req, res);
-      if (endpoint === 'product') return require('../../server/api_impl/stock/product.js')(req, res);
+      // Handle /stock/product/ID or /stock/product/ID/allocate or /stock/product/ID/allocation
+      if (endpoint === 'product') {
+        req.query.productId = resourceId;
+        // Route based on action or HTTP method
+        const stockProductHandler = require('../../server/api_impl/stock/product.js');
+        
+        // Check the action parameter or HTTP method
+        if (action === 'allocate' && req.method === 'POST') {
+          // POST /stock/product/ID/allocate
+          return stockProductHandler.allocate(req, res);
+        } else if (action === 'allocation' && req.method === 'PUT') {
+          // PUT /stock/product/ID/allocation - calls adjust function
+          return stockProductHandler.adjust(req, res);
+        } else if (req.method === 'GET' && !action) {
+          // GET /stock/product/ID
+          return stockProductHandler.get(req, res);
+        } else {
+          return res.status(405).json({ message: 'Method not allowed for this endpoint' });
+        }
+      }
     }
     
     if (domain === 'summary') {
@@ -70,14 +101,27 @@ module.exports = async (req, res) => {
     }
     
     if (domain === 'warehouses') {
+      // POST /warehouses - handled by index.js
+      if (req.method === 'POST') return require('../../server/api_impl/warehouses/index.js')(req, res);
+      // GET /warehouses - handled by index.js
       if (endpoint === 'index') return require('../../server/api_impl/warehouses/index.js')(req, res);
-      if (endpoint === '[id]' || slug[2]) {
-        req.query.id = slug[2] || req.query.id;
+      // DELETE /warehouses/{id} - needs route checking
+      if (req.method === 'DELETE' && resourceId && !action) {
+        req.query.id = resourceId;
+        return require('../../server/api_impl/warehouses/delete.js')(req, res);
+      }
+      // GET /warehouses/{id} - handled by [id].js
+      if (req.method === 'GET' && resourceId && !action) {
+        req.query.id = resourceId;
         return require('../../server/api_impl/warehouses/[id].js')(req, res);
       }
-      if (endpoint === 'create') return require('../../server/api_impl/warehouses/create.js')(req, res);
-      if (endpoint === 'update') return require('../../server/api_impl/warehouses/update.js')(req, res);
-      if (endpoint === 'delete') return require('../../server/api_impl/warehouses/delete.js')(req, res);
+      // PUT /warehouses/{id} - handled by update.js
+      if (req.method === 'PUT' && resourceId && !action) {
+        req.query.id = resourceId;
+        return require('../../server/api_impl/warehouses/update.js')(req, res);
+      }
+      // Default: try index
+      if (endpoint === 'index') return require('../../server/api_impl/warehouses/index.js')(req, res);
     }
     
     return res.status(404).json({ message: `Endpoint /${domain}/${endpoint} not found` });
