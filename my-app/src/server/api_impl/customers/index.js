@@ -8,7 +8,20 @@ module.exports = async (req, res) => {
   if (!user) return;
   try {
     if (req.method === 'GET') {
-      const items = await Customer.find().sort({ name: 1 });
+      const { phone, q } = req.query || {};
+      
+      // Build query
+      const query = {};
+      if (phone) {
+        query.phone = phone;
+      } else if (q) {
+        query.$or = [
+          { name: new RegExp(q, 'i') },
+          { phone: new RegExp(q, 'i') }
+        ];
+      }
+      
+      const items = await Customer.find(query).sort({ name: 1 }).lean();
       res._jsonBody = items;
       return res.json(items);
     }

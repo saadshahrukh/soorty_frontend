@@ -31,9 +31,10 @@ module.exports = async (req, res) => {
       if (req.method === 'POST' && !resourceId) return require('../../server/api_impl/expenses/index.js')(req, res);
       // GET /expenses/totals endpoint
       if (endpoint === 'totals') return require('../../server/api_impl/expenses/totals.js')(req, res);
-      // Handle /expenses/ID routes (PUT, DELETE)
-      if (resourceId && !action) {
-        req.query.id = resourceId;
+      // Handle /expenses/ID routes (PUT, DELETE) - ID can be in endpoint or resourceId
+      if ((resourceId && !action) || (endpoint !== 'index' && endpoint !== 'totals' && !resourceId)) {
+        const id = resourceId || endpoint;
+        req.query.id = id;
         if (req.method === 'PUT') return require('../../server/api_impl/expenses/index.js')(req, res);
         if (req.method === 'DELETE') return require('../../server/api_impl/expenses/index.js')(req, res);
       }
@@ -53,9 +54,10 @@ module.exports = async (req, res) => {
       if (endpoint === 'search') return require('../../server/api_impl/orders/search.js')(req, res);
       // POST /orders/bulk
       if (endpoint === 'bulk') return require('../../server/api_impl/orders/bulk.js')(req, res);
-      // Handle /orders/ID routes (GET, PUT, DELETE)
-      if (resourceId && !action) {
-        req.query.id = resourceId;
+      // Handle /orders/ID routes (GET, PUT, DELETE) - ID can be in endpoint or resourceId
+      if ((resourceId && !action) || (endpoint !== 'index' && !['search', 'bulk'].includes(endpoint) && !resourceId)) {
+        const id = resourceId || endpoint;
+        req.query.id = id;
         return require('../../server/api_impl/orders/[id].js')(req, res);
       }
     }
@@ -65,9 +67,10 @@ module.exports = async (req, res) => {
       if (endpoint === 'index') return require('../../server/api_impl/products/index.js')(req, res);
       if (req.method === 'GET' && !resourceId) return require('../../server/api_impl/products/index.js')(req, res);
       if (req.method === 'POST' && !resourceId) return require('../../server/api_impl/products/index.js')(req, res);
-      // Handle /products/ID routes (GET, PUT, DELETE)
-      if (resourceId && !action) {
-        req.query.id = resourceId;
+      // Handle /products/ID routes (GET, PUT, DELETE) - ID can be in endpoint or resourceId
+      if ((resourceId && !action) || (endpoint !== 'index' && !resourceId)) {
+        const id = resourceId || endpoint;
+        req.query.id = id;
         return require('../../server/api_impl/products/[id].js')(req, res);
       }
     }
@@ -115,19 +118,21 @@ module.exports = async (req, res) => {
       if (req.method === 'POST') return require('../../server/api_impl/warehouses/index.js')(req, res);
       // GET /warehouses - handled by index.js
       if (endpoint === 'index') return require('../../server/api_impl/warehouses/index.js')(req, res);
-      // DELETE /warehouses/{id} - needs route checking
-      if (req.method === 'DELETE' && resourceId && !action) {
-        req.query.id = resourceId;
+      // Determine ID (can be in endpoint or resourceId)
+      const id = resourceId || (endpoint !== 'index' ? endpoint : null);
+      // DELETE /warehouses/{id}
+      if (req.method === 'DELETE' && id && !action) {
+        req.query.id = id;
         return require('../../server/api_impl/warehouses/delete.js')(req, res);
       }
-      // GET /warehouses/{id} - handled by [id].js
-      if (req.method === 'GET' && resourceId && !action) {
-        req.query.id = resourceId;
+      // GET /warehouses/{id}
+      if (req.method === 'GET' && id && !action) {
+        req.query.id = id;
         return require('../../server/api_impl/warehouses/[id].js')(req, res);
       }
-      // PUT /warehouses/{id} - handled by update.js
-      if (req.method === 'PUT' && resourceId && !action) {
-        req.query.id = resourceId;
+      // PUT /warehouses/{id}
+      if (req.method === 'PUT' && id && !action) {
+        req.query.id = id;
         return require('../../server/api_impl/warehouses/update.js')(req, res);
       }
       // Default: try index
