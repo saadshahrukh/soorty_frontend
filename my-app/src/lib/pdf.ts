@@ -19,10 +19,9 @@ export const convertImageToBase64 = async (imagePath: string): Promise<string> =
   }
 };
 
-// Finalized for 80mm Thermal Printer - Zero Cutting & Large Fonts
 export async function generateOrderSlip(order: Order) {
-  // Standard 80mm paper width
-  const pageWidth = 80; 
+  // Use 76mm to match the successful software's settings
+  const pageWidth = 76; 
   const pageHeight = 3276; 
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -30,45 +29,43 @@ export async function generateOrderSlip(order: Order) {
     format: [pageWidth, pageHeight]
   });
 
-  // margins: Left 5mm, Right 10mm (Extra right margin prevents cutting)
-  const leftMargin = 5;
+  // REDUCED LEFT MARGIN: Fixes the wide left gap and moves content left
+  // INCREASED RIGHT MARGIN: Keeps the "Amt" column safe from the edge
+  const leftMargin = 2; 
   const rightMargin = 10; 
-  const contentWidth = pageWidth - leftMargin - rightMargin; // 65mm usable width
+  const contentWidth = pageWidth - leftMargin - rightMargin; // 64mm usable zone
 
   const centerText = (text: string, y: number) => {
     const textWidth = doc.getTextWidth(text);
-    // Center relative to the 80mm page
     const x = (pageWidth - textWidth) / 2;
     doc.text(text, x, y);
   };
 
   const rightAlignText = (text: string, y: number) => {
     const textWidth = doc.getTextWidth(text);
-    // Align to the end of the 65mm usable zone
+    // Align values to the end of our 64mm content zone
     const x = (leftMargin + contentWidth) - textWidth;
     doc.text(text, x, y);
   };
 
   let yPosition = 6;
 
-  // --- BIGGER LOGO ---
+  // --- MUCH LARGER LOGO ---
   const logoBase64 = await convertImageToBase64('/logo.png');
   if (logoBase64) {
     try {
-      const logoWidth = 35; // Increased width
-      const logoHeight = 18; // Increased height
+      const logoWidth = 45; // Wider
+      const logoHeight = 22; // Taller
       doc.addImage(logoBase64, 'PNG', (pageWidth - logoWidth) / 2, yPosition, logoWidth, logoHeight);
-      yPosition += logoHeight + 4;
-    } catch (e) {
-      console.error("Logo Error:", e);
-    }
+      yPosition += logoHeight + 5;
+    } catch (e) {}
   }
 
-  // --- HEADER (Large & Bold) ---
+  // --- HEADER (Large Bold Fonts) ---
   doc.setFontSize(11); 
   doc.setFont('helvetica', 'bold');
   centerText('03218286245 | 02133542016', yPosition);
-  yPosition += 5;
+  yPosition += 5.5;
   
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
@@ -77,57 +74,55 @@ export async function generateOrderSlip(order: Order) {
   centerText('No 1, Karachi, Pakistan', yPosition);
   yPosition += 8;
 
-  // --- BILL INFO ---
+  // --- DATE & BILL NO ---
   const currentDate = new Date();
   const formattedDate = `${currentDate.getDate()}-${currentDate.getMonth() + 1}-${currentDate.getFullYear()} ${currentDate.getHours()}:${currentDate.getMinutes()}`;
   
   doc.setFontSize(9);
   doc.text(`Date: ${formattedDate}`, leftMargin, yPosition);
-  yPosition += 5;
+  yPosition += 5.5;
   
-  doc.setFontSize(13); // Extra large Bill No
+  doc.setFontSize(14); // Very Large Bill No
   doc.setFont('helvetica', 'bold');
   centerText(`Bill No: ${order.orderId}`, yPosition);
   yPosition += 8;
 
-  // --- CUSTOMER DETAILS TABLE ---
-  // Fix for Name: checking multiple possible fields
+  // --- CUSTOMER DETAILS (The Perfect Table) ---
   const custName = (order as any).customerName || 
                    (order as any).customer?.name || 
                    (order as any).clientName || 
-                   (order as any).customerSupplierName || 
                    "Walk-in Customer";
 
   const drawInfoBox = (label: string, value: string, height: number) => {
     doc.setFont('helvetica', 'bold');
     doc.rect(leftMargin, yPosition, 20, height); 
-    doc.text(label, leftMargin + 2, yPosition + (height / 2) + 1);
+    doc.text(label, leftMargin + 2, yPosition + (height / 2) + 1.5);
     
     doc.setFont('helvetica', 'normal');
     doc.rect(leftMargin + 20, yPosition, contentWidth - 20, height);
     const wrappedValue = doc.splitTextToSize(value || 'N/A', contentWidth - 24);
-    doc.text(wrappedValue, leftMargin + 22, yPosition + 4.5);
+    doc.text(wrappedValue, leftMargin + 22, yPosition + 5);
     yPosition += height;
   };
 
   doc.setFontSize(10);
-  drawInfoBox('Name:', custName, 9);
-  drawInfoBox('Phone:', (order as any).customerPhone || (order as any).customer?.phone || 'N/A', 9);
+  drawInfoBox('Name:', custName, 10);
+  drawInfoBox('Phone:', (order as any).customerPhone || (order as any).customer?.phone || 'N/A', 10);
   
   const addr = (order as any).customerAddress || (order as any).customer?.address || 'Karachi';
   const addrLines = doc.splitTextToSize(addr, contentWidth - 24);
-  const addrBoxHeight = Math.max(9, addrLines.length * 5);
+  const addrBoxHeight = Math.max(10, addrLines.length * 5 + 2);
   drawInfoBox('Address:', addr, addrBoxHeight);
 
-  yPosition += 7;
-  doc.setFontSize(11);
+  yPosition += 8;
+  doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
-  centerText('SALE RECIEPT', yPosition); // Changed from DUPLICATE BILL
-  yPosition += 7;
+  centerText('SALE RECIEPT', yPosition); 
+  yPosition += 8;
 
-  // --- PRODUCT TABLE (65mm Wide Layout) ---
-  // Layout: Item(24), Price(12), Qty(6), Disc(9), Amount(14) = 65mm
-  const colWidths = [24, 12, 6, 9, 14];
+  // --- PRODUCT TABLE (64mm Safety Width) ---
+  // Split: Item(23), Price(12), Qty(6), Disc(9), Amount(14)
+  const colWidths = [23, 12, 6, 9, 14];
   doc.setFillColor(230, 230, 230);
   doc.rect(leftMargin, yPosition, contentWidth, 8, 'F');
   doc.rect(leftMargin, yPosition, contentWidth, 8);
@@ -141,40 +136,38 @@ export async function generateOrderSlip(order: Order) {
   });
   yPosition += 8;
 
-  // --- ITEMS LOOP ---
+  // --- ITEMS ---
   doc.setFont('helvetica', 'normal');
   const products = (order as any).products || [order]; 
-  
   products.forEach((p: any) => {
     const lineAmt = (p.sellingPrice || 0) * (p.quantity || 1);
     const pName = doc.splitTextToSize(p.name || p.productServiceName || '', colWidths[0] - 2);
-    const rowH = Math.max(8, pName.length * 4.5);
+    const rowH = Math.max(9, pName.length * 5);
     
     doc.rect(leftMargin, yPosition, contentWidth, rowH);
     let rowX = leftMargin;
     
-    doc.text(pName, rowX + 1, yPosition + 5); 
+    doc.text(pName, rowX + 1, yPosition + 5.5); 
     rowX += colWidths[0];
     doc.line(rowX, yPosition, rowX, yPosition + rowH);
-    doc.text(Number(p.sellingPrice).toFixed(0), rowX + 1, yPosition + 5.5);
+    doc.text(Number(p.sellingPrice).toFixed(0), rowX + 1, yPosition + 6);
     
     rowX += colWidths[1];
     doc.line(rowX, yPosition, rowX, yPosition + rowH);
-    doc.text(String(p.quantity), rowX + 1, yPosition + 5.5);
+    doc.text(String(p.quantity), rowX + 1.5, yPosition + 6);
     
     rowX += colWidths[2];
     doc.line(rowX, yPosition, rowX, yPosition + rowH);
-    doc.text(Number(p.discount || 0).toFixed(0), rowX + 1, yPosition + 5.5);
+    doc.text(Number(p.discount || 0).toFixed(0), rowX + 1, yPosition + 6);
     
     rowX += colWidths[3];
     doc.line(rowX, yPosition, rowX, yPosition + rowH);
-    doc.text(lineAmt.toFixed(0), rowX + 1, yPosition + 5.5);
-    
+    doc.text(lineAmt.toFixed(0), rowX + 1, yPosition + 6);
     yPosition += rowH;
   });
 
-  // --- TOTALS SECTION ---
-  yPosition += 7;
+  // --- TOTALS (Pushed Left for Safety) ---
+  yPosition += 8;
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   
@@ -186,12 +179,12 @@ export async function generateOrderSlip(order: Order) {
     doc.setFontSize(isBig ? 12 : 11);
     doc.text(label, leftMargin, yPosition);
     rightAlignText(value, yPosition);
-    yPosition += 6;
+    yPosition += 6.5;
   };
 
   drawTotalLine('Total Bill:', finalAmt.toFixed(2));
   doc.line(leftMargin, yPosition - 1, leftMargin + contentWidth, yPosition - 1);
-  yPosition += 2;
+  yPosition += 2.5;
   
   drawTotalLine('Amount Paid:', paid.toFixed(2));
   drawTotalLine('Balance:', balance.toFixed(2), true);
@@ -202,20 +195,16 @@ export async function generateOrderSlip(order: Order) {
   doc.setFont('helvetica', 'normal');
   centerText('Thankyou For Shopping. Come Again.', yPosition);
   yPosition += 5;
-  doc.setFontSize(8);
   centerText('No Return No Exchange Without Bill', yPosition);
   
-  yPosition += 8;
+  yPosition += 9;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
   centerText('Meezan Bank | Pak Soorty Dates', yPosition);
   yPosition += 5;
   centerText('Account No: 99 6201 0943 5654', yPosition);
 
-  // Auto-Save
   doc.save(`SALE_RECIEPT_${order.orderId}.pdf`);
 }
-
 export function generateOrdersReport(orders: Order[], title = 'Orders Report') {
   const doc = new jsPDF('l');
   doc.setFontSize(16);
