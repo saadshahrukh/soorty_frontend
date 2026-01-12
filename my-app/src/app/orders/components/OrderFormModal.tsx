@@ -20,25 +20,51 @@ export default function OrderFormModal({
   setFormData,
   handleSubmit
 }: OrderFormModalProps) {
-  const [products, setProducts] = useState<{ _id: string; name: string; basePrice: number; baseCost?: number; stock?: number; priceTiers?: { label: string; price: number }[] }[]>([]);
+  const [products, setProducts] = useState<{ _id: string; name: string; basePrice: number; baseCost?: number; stock?: number; priceTiers?: { label: string; price: number }[]; warehouseQty?: number; warehouseCostPrice?: number }[]>([]);
   const [productQuery, setProductQuery] = useState('');
   const [loadingLookup, setLoadingLookup] = useState(false);
   const [warehouses, setWarehouses] = useState<{ _id: string; name: string }[]>([]);
 
   useEffect(() => {
     const loadProducts = async () => {
-      if (formData.businessType === 'Dates') {
-        const params: any = { businessType: 'Dates' };
-        if (productQuery) params.q = productQuery;
-        if (formData.warehouseId) params.warehouseId = formData.warehouseId;
-        const { data } = await api.get('/products', { params });
-        setProducts(data);
+      if (formData.businessType === 'Dates' && formData.warehouseId) {
+        try {
+          const params: any = { businessType: 'Dates' };
+          if (productQuery) params.q = productQuery;
+          // Get all products for this business type
+          const { data: allProducts } = await api.get('/products', { params });
+          
+          // For each product, fetch warehouse-specific inventory
+          const enrichedProducts = await Promise.all(
+            (allProducts || []).map(async (product: any) => {
+              try {
+                const { data: stockData } = await api.get(`/stock/product/${product._id}`);
+                // Find allocation for selected warehouse
+                const warehouseAlloc = stockData.allocations?.find((a: any) => a.warehouseId === formData.warehouseId);
+                return {
+                  ...product,
+                  warehouseQty: warehouseAlloc?.quantity || 0,
+                  warehouseCostPrice: warehouseAlloc?.currentCostPrice || product.baseCost || 0,
+                  batches: warehouseAlloc?.batches || []
+                };
+              } catch (e) {
+                return { ...product, warehouseQty: 0, warehouseCostPrice: 0, batches: [] };
+              }
+            })
+          );
+          
+          // Filter out products with 0 quantity in selected warehouse
+          setProducts(enrichedProducts.filter(p => p.warehouseQty > 0));
+        } catch (error) {
+          console.error('Failed to load products:', error);
+          setProducts([]);
+        }
       } else {
         setProducts([]);
       }
     };
     loadProducts();
-  }, [formData.businessType, productQuery, showForm]);
+  }, [formData.businessType, formData.warehouseId, productQuery, showForm]);
 
   useEffect(() => {
     // load warehouses for selection
@@ -294,9 +320,9 @@ export default function OrderFormModal({
               <div
                 key={p._id}
                 onClick={() => {
-                  // prevent adding if out of stock
-                  if ((p.stock || 0) <= 0) {
-                    toast.error('Product is out of stock');
+                  // prevent adding if out of stock in selected warehouse
+                  if ((p.warehouseQty || 0) <= 0) {
+                    toast.error('Product is out of stock in selected warehouse');
                     return;
                   }
                   // add or increment product in formData.products
@@ -304,13 +330,12 @@ export default function OrderFormModal({
                     const items = (prev.products || []).slice() as any[];
                     const idx = items.findIndex(i => i.productId === p._id);
                     if (idx >= 0) {
-                      // do not exceed stock
+                      // do not exceed warehouse stock
                       const currentQty = Number(items[idx].quantity || 0);
-                      const newQty = Math.min((p.stock || Infinity), currentQty + 1);
+                      const newQty = Math.min((p.warehouseQty || Infinity), currentQty + 1);
                       items[idx].quantity = newQty;
-                      // sellingPrice and costPrice represent unit prices and should not be multiplied here
-                      items[idx].sellingPrice = Number(items[idx].sellingPrice || items[idx].basePrice || p.basePrice || 0);
-                      items[idx].costPrice = Number(items[idx].baseCost || p.baseCost || 0);
+                      // Use FIFO cost price from this warehouse
+                      items[idx].costPrice = Number(p.warehouseCostPrice || p.baseCost || 0);
                     } else {
                       // build composite tiers: default (basePrice) + configured tiers
                       const extraTiers = (p.priceTiers || []).map((t: any) => ({ label: t.label, price: Number(t.price || 0) }));
@@ -321,11 +346,11 @@ export default function OrderFormModal({
                         name: p.name,
                         quantity: 1,
                         basePrice: p.basePrice,
-                        baseCost: p.baseCost || 0,
+                        baseCost: p.warehouseCostPrice || p.baseCost || 0,
                         sellingPrice: unitPrice,
-                        costPrice: p.baseCost || 0,
+                        costPrice: p.warehouseCostPrice || p.baseCost || 0,
                         discount: 0,
-                        availableStock: p.stock || 0,
+                        availableStock: p.warehouseQty || 0,
                         priceTiers: compositeTiers,
                         selectedTier: 0
                       } as any);
@@ -338,9 +363,8 @@ export default function OrderFormModal({
               >
                 <div>
                   <div className="font-medium text-gray-800">{p.name}</div>
-                  <div className="text-xs text-gray-500">Base: {p.basePrice} • Stock: {(p.stock || 0)}</div>
+                  <div className="text-xs text-gray-500">Price: {p.basePrice} • Qty: {(p.warehouseQty || 0)} • Cost: {(p.warehouseCostPrice || 0).toFixed(2)} (FIFO)</div>
                 </div>
-                <div className="text-xs text-gray-500">{(p.priceTiers && p.priceTiers.length > 0) ? `${p.priceTiers[0].label}: ${p.priceTiers[0].price}` : ''}</div>
               </div>
             ))}
           </div>
