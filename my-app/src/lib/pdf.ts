@@ -20,358 +20,190 @@ export const convertImageToBase64 = async (imagePath: string): Promise<string> =
 };
 
 
-// slip generation function - Optimized for BC-85AC thermal printer (80mm width)
+// slip generation function - Fixed for BC-85AC (80mm paper, 72mm printable area)
 export async function generateOrderSlip(order: Order) {
-  // Thermal slip dimensions for BC-85AC
-  const pageWidth = 80; // 80mm thermal paper
-  const pageHeight = 3276; // Continuous roll paper
+  const pageWidth = 80; 
+  const pageHeight = 3276; 
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
     format: [pageWidth, pageHeight]
   });
 
-  const leftMargin = 2;
-  const rightMargin = 2;
-  const contentWidth = pageWidth - leftMargin - rightMargin; // 76mm usable width
+  // 5mm margins on both sides = 70mm printable width
+  const leftMargin = 5;
+  const rightMargin = 5;
+  const contentWidth = pageWidth - leftMargin - rightMargin; 
 
-  // Your Base64 Logo
-  const logoBase64 = await convertImageToBase64('/logo.png');
-  
   const centerText = (text: string, y: number) => {
     const textWidth = doc.getTextWidth(text);
     const x = (pageWidth - textWidth) / 2;
     doc.text(text, x, y);
   };
 
+  const rightAlignText = (text: string, y: number) => {
+    const textWidth = doc.getTextWidth(text);
+    const x = pageWidth - rightMargin - textWidth;
+    doc.text(text, x, y);
+  };
+
   let yPosition = 5;
 
-  // LOGO - Top Center (scaled for 80mm paper)
+  // --- LOGO & HEADER ---
+  const logoBase64 = await convertImageToBase64('/logo.png');
   if (logoBase64) {
     try {
-      const logoWidth = 25; // Reduced for 80mm paper
-      const logoHeight = 12; // Reduced proportionally
-      const logoX = (pageWidth - logoWidth) / 2;
-      
-      doc.addImage(logoBase64, 'PNG', logoX, yPosition, logoWidth, logoHeight);
+      const logoWidth = 25;
+      const logoHeight = 12;
+      doc.addImage(logoBase64, 'PNG', (pageWidth - logoWidth) / 2, yPosition, logoWidth, logoHeight);
       yPosition += logoHeight + 2;
-    } catch (error) {
-      console.error('Logo Not Loaded:', error);
-    }
+    } catch (e) {}
   }
 
-  // Header Text - Increased font size for readability
   doc.setFontSize(8);
-  doc.setTextColor(0);
   centerText('03218286245 | 02133542016', yPosition);
-  yPosition += 3.5;
-  
-  doc.setFontSize(7); // Slightly smaller for address
+  yPosition += 4;
+  doc.setFontSize(7);
   centerText('Shop# 08 Euro Grand Park Nazimabad', yPosition);
-  yPosition += 3.5;
-  
+  yPosition += 4;
   centerText('No 1, Karachi, Pakistan', yPosition);
-  yPosition += 5;
+  yPosition += 6;
 
-  // Date and Bill No
+  // --- BILL INFO ---
   const currentDate = new Date();
-  const formattedDate = `${currentDate.getDate().toString().padStart(2, '0')}-${(currentDate.getMonth() + 1).toString().padStart(2, '0')}-${currentDate.getFullYear()} ${currentDate.getHours()}:${currentDate.getMinutes().toString().padStart(2, '0')}${currentDate.getHours() >= 12 ? 'PM' : 'AM'}`;
-  
+  const formattedDate = `${currentDate.getDate()}-${currentDate.getMonth() + 1}-${currentDate.getFullYear()}`;
   doc.setFontSize(7);
   doc.text(`Date: ${formattedDate}`, leftMargin, yPosition);
-  yPosition += 4;
+  yPosition += 5;
   
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   centerText(`Bill No: ${order.orderId}`, yPosition);
   yPosition += 6;
 
-  // Customer Information Table - Using a structured layout
+  // --- CUSTOMER DETAILS TABLE ---
   doc.setFontSize(8);
-  doc.setFont('helvetica', 'bold');
   doc.text('Customer Details:', leftMargin, yPosition);
-  yPosition += 4;
+  yPosition += 2;
 
-  // Create a bordered box for customer info
-  const customerBoxTop = yPosition;
-  const customerBoxHeight = 25; // Fixed height box
-  
-  // Draw customer info box
-  doc.setDrawColor(0);
-  doc.rect(leftMargin, customerBoxTop, contentWidth, customerBoxHeight);
-  
-  // Reset font for content
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  
-  let infoY = customerBoxTop + 4;
-  
-  // Name with automatic line break
-  const custName = (order as any).customerSupplierName || 
-                   (order as any).clientName || 
-                   (order as any).customerName || 
-                   ((order as any).customer && (order as any).customer.name) || 
-                   'N/A';
-  const nameLines = doc.splitTextToSize(`Name: ${custName}`, contentWidth - 4);
-  doc.text(nameLines, leftMargin + 2, infoY);
-  infoY += (nameLines.length * 3.5);
-  
-  // Phone
-  const custPhone = (order as any).customerPhone || 
-                    (order as any).clientPhone || 
-                    (order as any).customerPhone || 
-                    ((order as any).customer && (order as any).customer.phone) || 
-                    '0340-XXXXXXX';
-  const phoneLines = doc.splitTextToSize(`Phone: ${custPhone}`, contentWidth - 4);
-  doc.text(phoneLines, leftMargin + 2, infoY);
-  infoY += (phoneLines.length * 3.5);
-  
-  // Address with automatic line break
-  const address = (order as any).customerAddress || 
-                  (order as any).clientAddress || 
-                  ((order as any).customer && (order as any).customer.address) || 
-                  'Karachi, Pakistan';
-  const addressLines = doc.splitTextToSize(`Address: ${address}`, contentWidth - 4);
-  doc.text(addressLines, leftMargin + 2, infoY);
-  infoY += (addressLines.length * 3.5);
-  
-  yPosition = customerBoxTop + customerBoxHeight + 3;
-
-  // Line separator
-  doc.setDrawColor(0);
-  doc.line(leftMargin, yPosition, pageWidth - rightMargin, yPosition);
-  yPosition += 4;
-
-  // Duplicate Bill text
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'bold');
-  centerText('DUPLICATE BILL', yPosition);
-  yPosition += 6;
-
-  // PRODUCTS TABLE - Optimized for 80mm width
-  const tableTop = yPosition;
-  
-  // Adjusted column widths for 76mm content width
-  const colWidths = [28, 12, 10, 10, 16]; // Item(28), Price(12), Qty(10), Disc(10), Amount(16)
-  const rowHeight = 6;
-  const headerHeight = 5;
-
-  // Table Header with Grey Background and Borders
-  doc.setFillColor(240, 240, 240);
-  doc.rect(leftMargin, tableTop, contentWidth, headerHeight, 'F');
-  
-  // Draw header borders
-  doc.setDrawColor(0);
-  doc.rect(leftMargin, tableTop, contentWidth, headerHeight);
-  
-  // Header text positions
-  let currentX = leftMargin;
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'bold');
-  
-  // Draw column dividers and text
-  const headers = ['Item', 'Price', 'Qty', 'Disc', 'Amount'];
-  
-  headers.forEach((header, index) => {
-    doc.text(header, currentX + 2, tableTop + 3);
-    if (index < headers.length - 1) {
-      currentX += colWidths[index];
-      doc.line(currentX, tableTop, currentX, tableTop + headerHeight);
-    }
-  });
-  
-  yPosition = tableTop + headerHeight;
-
-  // Item Details - Optimized font size
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7); // Increased from 6 for better readability
-  
-  let totalSelling = 0;
-  let totalCost = 0;
-  let totalQty = 0;
-  let totalDiscount = 0;
-
-  const drawTableRow = (item: any, index: number) => {
-    // Alternate row background
-    if (index % 2 === 0) {
-      doc.setFillColor(250, 250, 250);
-      doc.rect(leftMargin, yPosition, contentWidth, rowHeight, 'F');
-    }
+  const drawCustomerRow = (label: string, value: string, height: number) => {
+    doc.setFont('helvetica', 'bold');
+    doc.rect(leftMargin, yPosition, 20, height); // Label box
+    doc.text(label, leftMargin + 2, yPosition + (height/2) + 1);
     
-    // Draw row border
-    doc.setDrawColor(0);
-    doc.rect(leftMargin, yPosition, contentWidth, rowHeight);
+    doc.setFont('helvetica', 'normal');
+    doc.rect(leftMargin + 20, yPosition, contentWidth - 20, height); // Value box
+    const wrappedValue = doc.splitTextToSize(value || 'N/A', contentWidth - 24);
+    doc.text(wrappedValue, leftMargin + 22, yPosition + 4);
     
-    // Draw vertical lines
-    currentX = leftMargin;
-    for (let i = 0; i < colWidths.length - 1; i++) {
-      currentX += colWidths[i];
-      doc.line(currentX, yPosition, currentX, yPosition + rowHeight);
-    }
-    
-    // Get item data
-    const productName = item.name || item.productServiceName || '';
-    const sp = Number(item.sellingPrice || item.basePrice || 0);
-    const qty = Number(item.quantity || 0);
-    const discount = Number(item.discount || 0);
-    const lineAmount = sp * qty;
-    
-    // Calculate vertical text position
-    const textY = yPosition + (rowHeight / 2) - 1;
-    
-    // Item name with line breaks (max 2 lines)
-    const productNameLines = doc.splitTextToSize(productName, colWidths[0] - 4);
-    const displayLines = productNameLines.slice(0, 2); // Limit to 2 lines
-    doc.text(displayLines, leftMargin + 2, textY);
-    
-    // Price (right aligned)
-    const priceText = sp.toFixed(2);
-    const priceWidth = doc.getTextWidth(priceText);
-    doc.text(priceText, leftMargin + colWidths[0] + colWidths[1] - priceWidth - 2, textY);
-    
-    // Quantity (center aligned)
-    const qtyText = String(qty);
-    const qtyWidth = doc.getTextWidth(qtyText);
-    doc.text(qtyText, leftMargin + colWidths[0] + colWidths[1] + (colWidths[2] / 2) - (qtyWidth / 2), textY);
-    
-    // Discount (right aligned)
-    const discText = discount.toFixed(2);
-    const discWidth = doc.getTextWidth(discText);
-    doc.text(discText, leftMargin + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] - discWidth - 2, textY);
-    
-    // Amount (right aligned)
-    const amountText = lineAmount.toFixed(2);
-    const amountWidth = doc.getTextWidth(amountText);
-    doc.text(amountText, leftMargin + contentWidth - amountWidth - 2, textY);
-    
-    // Adjust yPosition based on product name lines
-    yPosition += rowHeight + (displayLines.length > 1 ? 2 : 0);
-    
-    return { lineAmount, qty, discount };
+    yPosition += height;
   };
 
-  // Draw products
-  if ((order as any).products && Array.isArray((order as any).products) && (order as any).products.length > 0) {
-    (order as any).products.forEach((p: any, index: number) => {
-      const result = drawTableRow(p, index);
-      totalSelling += result.lineAmount;
-      totalQty += result.qty;
-      totalCost += Number(p.costPrice || p.baseCost || 0) * result.qty;
-      totalDiscount += result.discount;
-    });
-  } else {
-    const singleProduct = {
-      name: order.productServiceName || (order as any).name || '',
-      sellingPrice: order.sellingPrice || 0,
-      quantity: order.quantity || 0,
-      discount: (order as any).orderDiscount || 0
-    };
-    
-    const result = drawTableRow(singleProduct, 0);
-    totalSelling = result.lineAmount;
-    totalQty = result.qty;
-    totalCost = Number(order.costPrice || 0) * result.qty;
-  }
-
-  // Order-level discount
-  totalDiscount += Number((order as any).orderDiscount || 0);
+  drawCustomerRow('Name', (order as any).customerName, 7);
+  drawCustomerRow('Phone', (order as any).customerPhone, 7);
   
-  // Line after items
-  doc.setDrawColor(0);
-  doc.line(leftMargin, yPosition, pageWidth - rightMargin, yPosition);
-  yPosition += 4;
+  // Dynamic height for address
+  const addr = (order as any).customerAddress || 'Karachi';
+  const addrLines = doc.splitTextToSize(addr, contentWidth - 24);
+  const addrHeight = Math.max(7, addrLines.length * 4 + 2);
+  drawCustomerRow('Address', addr, addrHeight);
 
-  // Total Section - Right aligned
-  doc.setFontSize(8);
+  yPosition += 5;
   doc.setFont('helvetica', 'bold');
+  centerText('DUPLICATE BILL', yPosition);
+  yPosition += 5;
+
+  // --- PRODUCTS TABLE (70mm wide) ---
+  // Split: Item(25), Price(12), Qty(8), Disc(10), Amount(15)
+  const colWidths = [25, 12, 8, 10, 15];
+  doc.setFillColor(240, 240, 240);
+  doc.rect(leftMargin, yPosition, contentWidth, 6, 'F');
+  doc.rect(leftMargin, yPosition, contentWidth, 6);
   
-  const delivery = Number((order as any).deliveryCharge || 0);
-  const deliveryPaidByCustomer = (order as any).deliveryPaidByCustomer !== undefined ? 
-    Boolean((order as any).deliveryPaidByCustomer) : true;
-  const finalAmountFromOrder = Number((order as any).finalAmount || 0);
-  const computedGrandTotal = finalAmountFromOrder || 
-    (((totalSelling - totalDiscount) * (1 + ((order as any).taxPercent || 0)/100)) + 
-     (deliveryPaidByCustomer ? delivery : 0));
-
-  // Create two-column layout for totals
-  const totals = [
-    { label: 'Total Bill:', value: totalSelling.toFixed(2) },
-    { label: 'Discount:', value: totalDiscount.toFixed(2) },
-    { label: 'Delivery:', value: (deliveryPaidByCustomer ? delivery.toFixed(2) : '0.00') },
-    { label: 'Grand Total:', value: computedGrandTotal.toFixed(2) },
-  ];
-
-  totals.forEach(item => {
-    doc.text(item.label, leftMargin, yPosition);
-    const valueX = pageWidth - rightMargin - doc.getTextWidth(item.value) - 2;
-    doc.text(item.value, valueX, yPosition);
-    yPosition += 4;
+  doc.setFontSize(7);
+  let curX = leftMargin;
+  ['Item', 'Price', 'Qty', 'Disc', 'Amt'].forEach((h, i) => {
+    doc.text(h, curX + 1, yPosition + 4);
+    curX += colWidths[i];
+    if (i < 4) doc.line(curX, yPosition, curX, yPosition + 6);
   });
-
-  yPosition += 3;
-
-  // Payment Details
-  let amountPaid = 0;
-  let balance = computedGrandTotal;
-  const finalAmount = finalAmountFromOrder || computedGrandTotal;
-  
-  if (order.paymentStatus === 'Paid') {
-    amountPaid = finalAmount;
-    balance = 0;
-  } else if (order.paymentStatus === 'Partial') {
-    amountPaid = Number((order as any).partialPaidAmount || 0);
-    balance = Number((order as any).partialRemainingAmount || Math.max(0, finalAmount - amountPaid));
-  }
-
-  doc.text('Amount Paid:', leftMargin, yPosition);
-  const paidValueX = pageWidth - rightMargin - doc.getTextWidth(amountPaid.toFixed(2)) - 2;
-  doc.text(amountPaid.toFixed(2), paidValueX, yPosition);
-  yPosition += 4;
-
-  doc.text('Balance:', leftMargin, yPosition);
-  const balanceValueX = pageWidth - rightMargin - doc.getTextWidth(balance.toFixed(2)) - 2;
-  doc.text(balance.toFixed(2), balanceValueX, yPosition);
   yPosition += 6;
 
-  // Final line
-  doc.setDrawColor(0);
-  doc.line(leftMargin, yPosition, pageWidth - rightMargin, yPosition);
-  yPosition += 4;
-
-  // Footer Section - Optimized for small paper
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'normal');
+  let totalSelling = 0;
+  const products = (order as any).products || [order]; 
   
+  doc.setFont('helvetica', 'normal');
+  products.forEach((p: any) => {
+    const lineAmt = (p.sellingPrice || 0) * (p.quantity || 1);
+    totalSelling += lineAmt;
+    
+    const pName = doc.splitTextToSize(p.name || p.productServiceName || '', colWidths[0] - 2);
+    const rowH = Math.max(6, pName.length * 3.5);
+    
+    doc.rect(leftMargin, yPosition, contentWidth, rowH);
+    let rowX = leftMargin;
+    
+    doc.text(pName, rowX + 1, yPosition + 3.5);
+    rowX += colWidths[0];
+    doc.line(rowX, yPosition, rowX, yPosition + rowH);
+    doc.text(Number(p.sellingPrice).toFixed(0), rowX + 1, yPosition + 4);
+    
+    rowX += colWidths[1];
+    doc.line(rowX, yPosition, rowX, yPosition + rowH);
+    doc.text(String(p.quantity), rowX + 2, yPosition + 4);
+    
+    rowX += colWidths[2];
+    doc.line(rowX, yPosition, rowX, yPosition + rowH);
+    doc.text(Number(p.discount || 0).toFixed(0), rowX + 1, yPosition + 4);
+    
+    rowX += colWidths[3];
+    doc.line(rowX, yPosition, rowX, yPosition + rowH);
+    doc.text(lineAmt.toFixed(0), rowX + 1, yPosition + 4);
+    
+    yPosition += rowH;
+  });
+
+  // --- TOTALS & PAYMENT SECTION ---
+  yPosition += 5;
+  doc.setFont('helvetica', 'bold');
+  
+  const finalAmt = Number((order as any).finalAmount || totalSelling);
+  const paid = order.paymentStatus === 'Paid' ? finalAmt : Number((order as any).partialPaidAmount || 0);
+  const balance = Math.max(0, finalAmt - paid);
+
+  const drawTotalLine = (label: string, value: string, isBold = false) => {
+    doc.setFont('helvetica', isBold ? 'bold' : 'normal');
+    doc.text(label, leftMargin, yPosition);
+    rightAlignText(value, yPosition);
+    yPosition += 5;
+  };
+
+  drawTotalLine('Total Bill:', totalSelling.toFixed(2));
+  drawTotalLine('Grand Total:', finalAmt.toFixed(2), true);
+  
+  doc.line(leftMargin, yPosition - 1, leftMargin + contentWidth, yPosition - 1);
+  yPosition += 2;
+  
+  drawTotalLine('Amount Paid:', paid.toFixed(2));
+  drawTotalLine('Balance:', balance.toFixed(2), true);
+
+  // --- FOOTER ---
+  yPosition += 4;
+  doc.setFontSize(7);
   centerText('Thankyou For Shopping. Come Again.', yPosition);
   yPosition += 4;
-  
   doc.setFontSize(6);
   centerText('No Return No Exchange Without Bill', yPosition);
-  yPosition += 4;
+  yPosition += 5;
   
-  doc.setFontSize(7);
   doc.setFont('helvetica', 'bold');
-  centerText('For Payment Details:', yPosition);
+  centerText('Payment: Meezan Bank | Pak Soorty Dates', yPosition);
   yPosition += 4;
-  
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6);
-  centerText('Meezan Bank', yPosition);
-  yPosition += 3;
-  centerText('Pak Soorty Dates', yPosition);
-  yPosition += 3;
-  centerText('Account No: 99 6201 0943 5654', yPosition);
-  yPosition += 4;
+  centerText('A/C: 99 6201 0943 5654', yPosition);
 
-  // Software info
-  doc.setFontSize(5);
-  centerText('Software Design By Metawayz', yPosition);
-  yPosition += 2.5;
-  centerText('www.metawayz.com | +923452208269', yPosition);
-
-  // Save with proper name
   doc.save(`SLIP_${order.orderId}.pdf`);
 }
+
 
 export function generateOrdersReport(orders: Order[], title = 'Orders Report') {
   const doc = new jsPDF('l');
