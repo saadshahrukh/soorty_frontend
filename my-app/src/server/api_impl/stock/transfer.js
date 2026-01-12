@@ -10,7 +10,96 @@ module.exports = async (req, res) => {
   const user = await requireAuth(req, res);
   if (!user) return;
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method not allowed' });
-  const { productId, fromWarehouseId, toWarehouseId, qty } = req.body || {};
-  // Basic transfer logic placeholder — preserve behavior as original route
-  return res.json({ message: 'transfer performed (backup handler)' });
+  
+  try {
+    const { productId, fromWarehouseId, toWarehouseId, qty, priceTierId, note } = req.body || {};
+
+    if (!productId || !fromWarehouseId || !toWarehouseId || !qty || qty <= 0) {
+      return res.status(400).json({ message: 'Missing or invalid required fields' });
+    }
+
+    // Get source warehouse stock
+    const fromStock = await StockAllocation.findOne({
+      productId: new mongoose.Types.ObjectId(productId),
+      warehouseId: new mongoose.Types.ObjectId(fromWarehouseId)
+    });
+
+    if (!fromStock) {
+      return res.status(404).json({ message: 'Source stock allocation not found' });
+    }
+
+    // Check if enough qty available
+    const totalFromQty = fromStock.getTotalQuantity();
+    if (totalFromQty < qty) {
+      return res.status(400).json({ message: `Insufficient stock. Available: ${totalFromQty}, Requested: ${qty}` });
+    }
+
+    // Transfer batches using FIFO (deduct from oldest batches first)
+    let remainingQty = qty;
+    const transferredBatches = [];
+
+    for (let i = 0; i < fromStock.batches.length && remainingQty > 0; i++) {
+      const batch = fromStock.batches[i];
+      const deductQty = Math.min(batch.quantity, remainingQty);
+      
+      if (deductQty > 0) {
+        transferredBatches.push({
+          batchId: batch.batchId,
+          quantity: deductQty,
+          costPrice: batch.costPrice
+        });
+        
+        batch.quantity -= deductQty;
+        remainingQty -= deductQty;
+      }
+    }
+
+    // Remove empty batches
+    fromStock.batches = fromStock.batches.filter(b => b.quantity > 0);
+    await fromStock.save();
+
+    // Get or create destination warehouse stock
+    let toStock = await StockAllocation.findOne({
+      productId: new mongoose.Types.ObjectId(productId),
+      warehouseId: new mongoose.Types.ObjectId(toWarehouseId)
+    });
+
+    if (!toStock) {
+      toStock = new StockAllocation({
+        productId: new mongoose.Types.ObjectId(productId),
+        warehouseId: new mongoose.Types.ObjectId(toWarehouseId),
+        batches: []
+      });
+    }
+
+    // Add transferred batches to destination
+    transferredBatches.forEach(batch => {
+      toStock.batches.push(batch);
+    });
+
+    await toStock.save();
+
+    // Record the transfer in StockTransfer log
+    const transfer = new StockTransfer({
+      productId: new mongoose.Types.ObjectId(productId),
+      fromWarehouseId: new mongoose.Types.ObjectId(fromWarehouseId),
+      toWarehouseId: new mongoose.Types.ObjectId(toWarehouseId),
+      priceTierId: priceTierId ? new mongoose.Types.ObjectId(priceTierId) : undefined,
+      qty: qty,
+      performedBy: user._id,
+      note: note || `Transfer of ${qty} units`
+    });
+
+    await transfer.save();
+
+    return res.json({
+      message: 'Transfer completed successfully',
+      transfer: transfer,
+      fromStock: fromStock,
+      toStock: toStock
+    });
+  } catch (e) {
+    console.error('Stock transfer error:', e);
+    return res.status(500).json({ message: e.message });
+  }
 };

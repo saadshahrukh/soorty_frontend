@@ -133,7 +133,7 @@ export default function OrderFormModal({
   if (!showForm) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className="fixed inset-0 !overflow-scroll z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold">{editingOrder ? 'Edit Order' : 'New Order'}</h2>
