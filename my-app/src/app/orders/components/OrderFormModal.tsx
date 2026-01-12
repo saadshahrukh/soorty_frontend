@@ -81,14 +81,51 @@ export default function OrderFormModal({
     try {
       setLoadingLookup(true);
       const { data } = await api.get('/customers', { params: { phone } });
-      if (data) {
-        setFormData((prev: FormData) => ({ ...prev, clientPhone: data.phone || phone, clientName: data.name || '', clientAddress: data.address || '', customerSupplierName: data.name || prev.customerSupplierName }));
+      
+      // data can be an array or single object
+      const customer = Array.isArray(data) ? data[0] : data;
+      
+      if (customer && customer.name) {
+        // Found customer - populate all fields
+        setFormData((prev: FormData) => ({ 
+          ...prev, 
+          clientPhone: customer.phone || phone, 
+          clientName: customer.name || '', 
+          clientAddress: customer.address || '', 
+          customerSupplierName: customer.name || prev.customerSupplierName 
+        }));
       } else {
-        // Not found -> clear name/address but keep phone
-        setFormData((prev: FormData) => ({ ...prev, clientPhone: phone, clientName: '', clientAddress: '' }));
+        // Customer not found - check if user has manually entered name/address
+        if (formData.clientName && formData.clientAddress) {
+          // User has entered name and address - CREATE new customer
+          try {
+            const createPayload = {
+              name: formData.clientName,
+              phone: phone,
+              address: formData.clientAddress
+            };
+            const { data: created } = await api.post('/customers', createPayload);
+            if (created && created.name) {
+              setFormData((prev: FormData) => ({ 
+                ...prev, 
+                clientPhone: created.phone || phone,
+                clientName: created.name,
+                clientAddress: created.address || '',
+                customerSupplierName: created.name
+              }));
+            }
+          } catch (createError) {
+            console.error('Failed to create customer:', createError);
+            // Still allow form submission even if customer creation fails
+          }
+        } else {
+          // No customer found and no manual entry - just keep the phone and clear other fields
+          setFormData((prev: FormData) => ({ ...prev, clientPhone: phone, clientName: '', clientAddress: '' }));
+        }
       }
     } catch (e) {
-      // not found or error
+      // API error - user can enter manually then create new
+      console.error('Customer lookup error:', e);
       setFormData((prev: FormData) => ({ ...prev, clientPhone: phone, clientName: '', clientAddress: '' }));
     } finally {
       setLoadingLookup(false);

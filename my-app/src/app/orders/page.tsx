@@ -220,6 +220,14 @@ export default function OrdersPage() {
     try {
       // Prepare payload: prefer products array if present
       const payload: any = { ...formData };
+      
+      // CRITICAL: Add userId from authenticated user
+      if (user && user.id) {
+        payload.userId = user.id;
+      } else {
+        throw new Error('User not authenticated');
+      }
+      
       if (formData.products && formData.products.length > 0) {
         // Ensure numeric values and remove client transient fields
         payload.products = formData.products.map(p => ({
