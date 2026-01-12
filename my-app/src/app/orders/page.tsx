@@ -296,6 +296,11 @@ export default function OrdersPage() {
         await updateOrder(editingOrder._id, payload);
       } else {
         await createOrder(payload);
+        // CRITICAL: Refresh products page to reflect updated inventory
+        // Fire a custom event that products page can listen to
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('inventory:updated'));
+        }
       }
       
       setShowForm(false);

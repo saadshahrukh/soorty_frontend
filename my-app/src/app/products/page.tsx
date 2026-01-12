@@ -82,6 +82,14 @@ export default function ProductsPage() {
     }
     loadProducts();
     loadWarehouses();
+
+    // CRITICAL: Listen for inventory updates from other pages (e.g., order creation)
+    const handleInventoryUpdate = () => {
+      loadProducts();
+    };
+    
+    window.addEventListener('inventory:updated', handleInventoryUpdate);
+    return () => window.removeEventListener('inventory:updated', handleInventoryUpdate);
   }, [isAuthenticated, businessType]);
 
   const loadProducts = async () => {
@@ -292,6 +300,10 @@ export default function ProductsPage() {
       setShowTransferModal(false);
       await openStockModal(selectedProduct);
       await loadProducts();
+      // CRITICAL: Broadcast inventory update event
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('inventory:updated'));
+      }
     } catch (error: any) {
       toast.error(error?.response?.data?.message || "Transfer failed");
     } finally {
