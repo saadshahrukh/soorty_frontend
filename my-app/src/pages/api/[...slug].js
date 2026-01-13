@@ -21,7 +21,18 @@ module.exports = async (req, res) => {
     }
     
     if (domain === 'customers') {
-      if (endpoint === 'index') return require('../../server/api_impl/customers/index.js')(req, res);
+      // GET /customers or POST /customers handled by index.js
+      if (endpoint === 'index' && !resourceId) return require('../../server/api_impl/customers/index.js')(req, res);
+      if (req.method === 'GET' && !resourceId) return require('../../server/api_impl/customers/index.js')(req, res);
+      if (req.method === 'POST' && !resourceId) return require('../../server/api_impl/customers/index.js')(req, res);
+      // Handle /customers/ID routes (PUT, DELETE)
+      if ((resourceId && !action) || (endpoint !== 'index' && !resourceId)) {
+        const customerId = resourceId || endpoint;
+        req.customerId = customerId;
+        if (req.method === 'PUT' || req.method === 'DELETE') {
+          return require('../../server/api_impl/customers/index.js')(req, res);
+        }
+      }
     }
     
     if (domain === 'expenses') {

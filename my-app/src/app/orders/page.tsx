@@ -253,8 +253,10 @@ export default function OrdersPage() {
       if (formData.clientPhone) {
         try {
           const { data: existing } = await api.get('/customers', { params: { phone: formData.clientPhone } });
-          if (existing && existing.name) {
-            payload.customerSupplierName = existing.name;
+          const customer = Array.isArray(existing) ? existing[0] : existing;
+          if (customer && customer._id) {
+            payload.customerSupplierName = customer.name;
+            payload.customerId = customer._id; // CRITICAL: Link order to customer
           }
         } catch (e) {
           // Not found -> create customer record before creating order
@@ -265,7 +267,10 @@ export default function OrdersPage() {
               address: formData.clientAddress || ''
             };
             const { data: created } = await api.post('/customers', createPayload);
-            if (created && created.name) payload.customerSupplierName = created.name;
+            if (created && created._id) {
+              payload.customerSupplierName = created.name;
+              payload.customerId = created._id; // CRITICAL: Link order to newly created customer
+            }
           } catch (ce) {
             // swallow customer create errors but continue to create order (backend will still validate required fields)
             console.error('Customer create failed', ce);

@@ -12,7 +12,7 @@ module.exports = async (req, res) => {
 
   if (req.method === 'GET') {
     try {
-      const { businessType, startDate, endDate, paymentStatus } = req.query || {};
+      const { businessType, startDate, endDate, paymentStatus, customerId, customerPhone } = req.query || {};
       
       // Build query
       const query = {};
@@ -22,6 +22,19 @@ module.exports = async (req, res) => {
         query.createdAt = {};
         if (startDate) query.createdAt.$gte = new Date(startDate);
         if (endDate) query.createdAt.$lte = new Date(endDate);
+      }
+      
+      // CRITICAL: Filter by customer if provided
+      if (customerId) {
+        try {
+          query.customerId = new mongoose.Types.ObjectId(customerId);
+        } catch (e) {
+          // Invalid ObjectId, filter won't match anything
+          query.customerId = null;
+        }
+      }
+      if (customerPhone) {
+        query.customerPhone = customerPhone;
       }
 
       const items = await Order.find(query).sort({ createdAt: -1 }).limit(200).lean();
