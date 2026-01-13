@@ -1,46 +1,51 @@
-"use client";
-import { useEffect, useState, useRef } from 'react';
+'use client';
+
+import { useEffect, useState } from 'react';
 import Sidebar from '@/components/Sidebar';
 import api from '@/lib/api';
-import { generateOrderSlip } from '@/lib/pdf';
 import { toast } from '@/store/toastStore';
 
 export default function ExpensesPage() {
-  // businessAdd is used in the Add Expense form; businessFilter is used for listing/filtering
-  const [businessAdd, setBusinessAdd] = useState<'Travel'|'Dates'|'Belts'>('Dates');
-  const [businessFilter, setBusinessFilter] = useState<string>('');
-  const [amount, setAmount] = useState<number>(0);
-  const [date, setDate] = useState<string>('');
-  const [description, setDescription] = useState('');
-  const [list, setList] = useState<any[]>([]);
+  const [expenses, setExpenses] = useState<any[]>([]);
+  const [businessType, setBusinessType] = useState<'Travel' | 'Dates' | 'Belts'>('Dates');
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
-  const [q, setQ] = useState('');
-  const [startDateFilter, setStartDateFilter] = useState('');
-  const [endDateFilter, setEndDateFilter] = useState('');
-  const [minAmount, setMinAmount] = useState<string>('');
-  const [maxAmount, setMaxAmount] = useState<string>('');
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  const [editing, setEditing] = useState<any | null>(null);
-  const debounceRef = useRef<number | null>(null);
+  // Filter states
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [limit, setLimit] = useState(50);
 
-  const load = async (p = 1) => {
+  // Add/Edit modal
+  const [showModal, setShowModal] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [modalLoading, setModalLoading] = useState(false);
+
+  // Form data
+  const [formData, setFormData] = useState({
+    businessType: 'Dates' as 'Travel' | 'Dates' | 'Belts',
+    amount: '',
+    description: '',
+    date: new Date().toISOString().split('T')[0]
+  });
+
+  // Load expenses
+  const loadExpenses = async (pageNum = 1) => {
     setLoading(true);
     try {
-  const params: any = { page: p, limit: 50 };
-  if (businessFilter) params.businessType = businessFilter;
-      if (q) params.q = q;
-      if (startDateFilter) params.startDate = new Date(startDateFilter).toISOString();
-      if (endDateFilter) params.endDate = new Date(endDateFilter).toISOString();
-      if (minAmount) params.minAmount = Number(minAmount);
-      if (maxAmount) params.maxAmount = Number(maxAmount);
+      const params: any = { page: pageNum, limit };
+      if (businessType) params.businessType = businessType;
+      if (startDate) params.startDate = new Date(startDate).toISOString();
+      if (endDate) params.endDate = new Date(endDate).toISOString();
+
       const { data } = await api.get('/expenses', { params });
-      if (data && data.items) {
-        setList(data.items);
-        setPage(data.page || 1);
-        setPages(data.pages || 1);
-      }
+      setExpenses(data.items || []);
+      setTotal(data.total || 0);
+      setPages(data.pages || 1);
+      setPage(data.page || 1);
     } catch (e) {
       console.error('Failed to load expenses', e);
       toast.error('Failed to load expenses');
@@ -49,258 +54,401 @@ export default function ExpensesPage() {
     }
   };
 
-  // initial load
-  useEffect(() => { load(1); }, []);
-
   useEffect(() => {
-    if (debounceRef.current) window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(() => load(1), 300);
-    return () => { if (debounceRef.current) window.clearTimeout(debounceRef.current); };
-  }, [q, startDateFilter, endDateFilter, minAmount, maxAmount]);
+    loadExpenses(1);
+  }, [businessType, startDate, endDate, limit]);
 
-  const applyFilters = () => { load(1); };
-  const clearFilters = () => {
-    setBusinessFilter(''); setQ(''); setStartDateFilter(''); setEndDateFilter(''); setMinAmount(''); setMaxAmount('');
-    load(1);
+  // Open add modal
+  const openAddModal = () => {
+    setIsEditing(false);
+    setEditingId(null);
+    setFormData({
+      businessType: 'Dates',
+      amount: '',
+      description: '',
+      date: new Date().toISOString().split('T')[0]
+    });
+    setShowModal(true);
   };
 
-  const save = async () => {
-    try {
-  const payload = { businessType: businessAdd, amount, description, date: date || new Date().toISOString() };
-      await api.post('/expenses', payload);
-      toast.success('Expense saved');
-      setAmount(0); setDescription(''); setDate('');
-      load(1);
-    } catch (e:any) {
-      console.error('Save failed', e);
-      toast.error(e?.response?.data?.message || 'Failed to save expense');
+  // Open edit modal
+  const openEditModal = (expense: any) => {
+    setIsEditing(true);
+    setEditingId(expense._id);
+    setFormData({
+      businessType: expense.businessType,
+      amount: String(expense.amount),
+      description: expense.description,
+      date: new Date(expense.date).toISOString().split('T')[0]
+    });
+    setShowModal(true);
+  };
+
+  // Save expense
+  const saveExpense = async () => {
+    if (!formData.amount || Number(formData.amount) <= 0) {
+      toast.error('Amount must be greater than 0');
+      return;
     }
-  };
 
-  const generateFakeSlip = async () => {
+    setModalLoading(true);
     try {
-      // Build a fake order object using values from the add form. This will not be saved.
-      const fakeOrder: any = {
-        orderId: `FAKE-${Date.now()}`,
-        businessType: businessAdd,
-        productServiceName: description || 'Sample Item',
-        sellingPrice: Number(amount) || 0,
-        quantity: 1,
-        orderDiscount: 0,
-        deliveryCharge: 0,
-        deliveryPaidByCustomer: true,
-        paymentStatus: 'Pending',
-        customerName: 'Demo Customer',
-        customerPhone: '',
-        customerAddress: '',
-        createdAt: new Date().toISOString(),
+      const payload = {
+        businessType: formData.businessType,
+        amount: Number(formData.amount),
+        description: formData.description,
+        date: new Date(formData.date).toISOString()
       };
 
-      await generateOrderSlip(fakeOrder);
-    } catch (err) {
-      console.error('Failed to generate fake slip', err);
-      toast.error('Failed to generate slip');
+      if (isEditing && editingId) {
+        await api.put(`/expenses/${editingId}`, payload);
+        toast.success('Expense updated');
+      } else {
+        await api.post('/expenses', payload);
+        toast.success('Expense added');
+      }
+
+      setShowModal(false);
+      loadExpenses(1);
+    } catch (e) {
+      console.error('Failed to save expense', e);
+      toast.error('Failed to save expense');
+    } finally {
+      setModalLoading(false);
     }
   };
 
-  const remove = async (id: string) => {
-    if (!confirm('Delete this expense?')) return;
+  // Delete expense
+  const deleteExpense = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this expense?')) return;
+
     try {
       await api.delete(`/expenses/${id}`);
-      toast.success('Deleted');
-      load(page);
+      toast.success('Expense deleted');
+      loadExpenses(page);
     } catch (e) {
-      console.error('Delete failed', e);
-      toast.error('Delete failed');
+      console.error('Failed to delete expense', e);
+      toast.error('Failed to delete expense');
     }
   };
 
-  const startEdit = (exp: any) => {
-    setEditing({ ...exp });
-  };
-
-  const saveEdit = async () => {
-    if (!editing) return;
-    try {
-      const payload = { businessType: editing.businessType, amount: Number(editing.amount || 0), description: editing.description, date: editing.date };
-      await api.put(`/expenses/${editing._id}`, payload);
-      toast.success('Expense updated');
-      setEditing(null);
-      load(page);
-    } catch (e) {
-      console.error('Update failed', e);
-      toast.error('Update failed');
-    }
+  // Calculate totals
+  const calculateTotals = () => {
+    const sum = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+    return sum;
   };
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
       <Sidebar isAdmin={true} />
-      <div className="flex-1 p-6 max-w-6xl mx-auto">
-        <h1 className="text-2xl font-bold mb-4">Expenses & Ledger</h1>
-
-        {/* Top controls: add form + filters */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-          <div className="bg-white p-4 rounded shadow">
-            <h3 className="font-semibold mb-3">Add Expense</h3>
-            <form onSubmit={(e) => { e.preventDefault(); save(); }} className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs text-gray-600">Business</label>
-                  <select aria-label="Business" className="block w-full px-3 py-2 border rounded bg-white" value={businessAdd} onChange={(e)=>setBusinessAdd(e.target.value as any)}>
-                    <option value="Dates">Dates</option>
-                    <option value="Travel">Travel</option>
-                    <option value="Belts">Belts</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs text-gray-600">Amount</label>
-                  <input aria-label="Amount" inputMode="numeric" type="number" className="w-full px-3 py-2 border rounded" value={amount} onChange={(e)=>setAmount(Number(e.target.value))} />
-                </div>
+      <div className="flex-1 p-8">
+        <div className="max-w-7xl mx-auto">
+          {/* Header */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">Expenses & Ledger</h1>
+                <p className="text-gray-600 mt-2">Track business expenses - deducted directly from profit</p>
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs text-gray-600">Date</label>
-                  <input aria-label="Date" type="date" className="w-full px-3 py-2 border rounded" value={date} onChange={(e)=>setDate(e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600">Description</label>
-                  <input aria-label="Description" className="w-full px-3 py-2 border rounded" value={description} onChange={(e)=>setDescription(e.target.value)} />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end">
-                <div className="flex gap-2">
-                  <button type="button" onClick={generateFakeSlip} className="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded">Preview Slip</button>
-                  <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded shadow">Add Expense</button>
-                </div>
-              </div>
-            </form>
+              <button
+                onClick={openAddModal}
+                className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium flex items-center gap-2"
+              >
+                <span>+ Add Expense</span>
+              </button>
+            </div>
           </div>
 
-          <div className="lg:col-span-2 bg-white p-4 rounded shadow">
-            <h3 className="font-semibold mb-3">Search & Filters</h3>
-            <div className="flex flex-col md:flex-row md:items-center md:gap-4 flex-wrap">
-              <div className="flex-1 min-w-0 relative">
-                {/* Search bar with icon + clear */}
-                <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" /></svg>
-                </div>
-                <input placeholder="Search description..." value={q} onChange={(e)=>setQ(e.target.value)} className="pl-10 pr-10 w-full max-w-full px-3 py-2 border rounded min-w-0" />
-                {q && (
-                  <button onClick={()=>setQ('')} aria-label="Clear search" className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                  </button>
-                )}
-              </div>
-
-              <div className="flex gap-2 flex-wrap items-center mt-3 md:mt-0">
-                <select value={businessFilter} onChange={(e)=>setBusinessFilter(e.target.value)} className="px-3 py-2 border rounded max-w-full min-w-0 w-44">
-                  <option value="">All Business</option>
+          {/* Filters */}
+          <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6 mb-6">
+            <h3 className="font-semibold text-gray-900 mb-4">Filters</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Business Type</label>
+                <select
+                  value={businessType}
+                  onChange={(e) => {
+                    setBusinessType(e.target.value as any);
+                    setPage(1);
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
                   <option value="Dates">Dates</option>
                   <option value="Travel">Travel</option>
                   <option value="Belts">Belts</option>
                 </select>
-                <input title="Start date" type="date" value={startDateFilter} onChange={(e)=>setStartDateFilter(e.target.value)} className="px-3 py-2 border rounded max-w-full min-w-0 w-40" />
-                <input title="End date" type="date" value={endDateFilter} onChange={(e)=>setEndDateFilter(e.target.value)} className="px-3 py-2 border rounded max-w-full min-w-0 w-40" />
-                <input placeholder="Min" value={minAmount} onChange={(e)=>setMinAmount(e.target.value)} className="px-3 py-2 border rounded max-w-full min-w-0 w-28" />
-                <input placeholder="Max" value={maxAmount} onChange={(e)=>setMaxAmount(e.target.value)} className="px-3 py-2 border rounded max-w-full min-w-0 w-28" />
               </div>
-
-              <div className="flex gap-2 mt-3 md:mt-0">
-                <button onClick={applyFilters} className="px-3 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700">Apply</button>
-                <button onClick={clearFilters} className="px-3 py-2 border rounded">Clear</button>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">From Date</label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    setPage(1);
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">To Date</label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    setPage(1);
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Items Per Page</label>
+                <select
+                  value={limit}
+                  onChange={(e) => {
+                    setLimit(Number(e.target.value));
+                    setPage(1);
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
               </div>
             </div>
+          </div>
 
-            {/* Active filter chips */}
-            <div className="mt-3 flex flex-wrap gap-2">
-              {q && (<span className="text-xs bg-gray-100 px-2 py-1 rounded flex items-center gap-2">Search: <strong className="ml-1">{q}</strong></span>)}
-              {businessFilter && (<span className="text-xs bg-gray-100 px-2 py-1 rounded">Business: <strong className="ml-1">{businessFilter}</strong></span>)}
-              {startDateFilter && (<span className="text-xs bg-gray-100 px-2 py-1 rounded">From: {startDateFilter}</span>)}
-              {endDateFilter && (<span className="text-xs bg-gray-100 px-2 py-1 rounded">To: {endDateFilter}</span>)}
-              {(minAmount || maxAmount) && (<span className="text-xs bg-gray-100 px-2 py-1 rounded">Amount: {minAmount || '0'} - {maxAmount || '∞'}</span>)}
+          {/* Summary Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+            <div className="bg-gradient-to-br from-red-50 to-red-100 p-6 rounded-lg border border-red-200 shadow-md">
+              <p className="text-xs text-red-700 font-semibold uppercase">Total Expenses</p>
+              <p className="text-3xl font-bold text-red-900 mt-2">
+                {calculateTotals().toLocaleString('en-PK', {
+                  style: 'currency',
+                  currency: 'PKR',
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 0
+                })}
+              </p>
+              <p className="text-xs text-red-700 mt-2">{expenses.length} transactions</p>
+            </div>
+
+            <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-lg border border-orange-200 shadow-md">
+              <p className="text-xs text-orange-700 font-semibold uppercase">Deducted from Profit</p>
+              <p className="text-3xl font-bold text-orange-900 mt-2">
+                -{calculateTotals().toLocaleString('en-PK', {
+                  style: 'currency',
+                  currency: 'PKR',
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 0
+                })}
+              </p>
+              <p className="text-xs text-orange-700 mt-2">Direct profit impact</p>
+            </div>
+
+            <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 p-6 rounded-lg border border-yellow-200 shadow-md">
+              <p className="text-xs text-yellow-700 font-semibold uppercase">Average Expense</p>
+              <p className="text-3xl font-bold text-yellow-900 mt-2">
+                {(expenses.length > 0 ? calculateTotals() / expenses.length : 0).toLocaleString('en-PK', {
+                  style: 'currency',
+                  currency: 'PKR',
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 0
+                })}
+              </p>
+              <p className="text-xs text-yellow-700 mt-2">Per transaction</p>
             </div>
           </div>
-        </div>
 
-        {/* Table / ledger */}
-        <div className="bg-white p-4 rounded shadow">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-semibold">Ledger Entries</h4>
-            <div className="text-sm text-gray-600">Showing {list.length} items</div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-gray-500">
-                  <th className="p-2">Date</th>
-                  <th className="p-2">Business</th>
-                  <th className="p-2">Description</th>
-                  <th className="p-2">Amount</th>
-                  <th className="p-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading && <tr><td colSpan={5} className="p-4">Loading...</td></tr>}
-                {!loading && list.map(l=> (
-                  <tr key={l._id} className="border-t hover:bg-gray-50">
-                    <td className="p-2 align-top w-32">{new Date(l.date).toLocaleDateString()}</td>
-                    <td className="p-2 align-top w-28">{l.businessType}</td>
-                    <td className="p-2 align-top">{l.description}</td>
-                    <td className="p-2 align-top font-medium">-{Number(l.amount).toFixed(2)}</td>
-                    <td className="p-2 align-top">
-                      <div className="flex gap-2">
-                        <button onClick={()=>startEdit(l)} className="px-2 py-1 bg-amber-500 text-white rounded">Edit</button>
-                        <button onClick={()=>remove(l._id)} className="px-2 py-1 bg-red-600 text-white rounded">Delete</button>
-                      </div>
-                    </td>
+          {/* Expenses Table */}
+          <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-100 border-b border-gray-200">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Date</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Business</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Description</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-700 uppercase">Amount</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-700 uppercase">Actions</th>
                   </tr>
-                ))}
-                {!loading && list.length===0 && <tr><td colSpan={5} className="p-4 text-sm text-gray-500">No expenses found</td></tr>}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="mt-3 flex items-center justify-between">
-            <div className="text-sm text-gray-600">Page {page} / {pages}</div>
-            <div>
-              <button disabled={page<=1} onClick={()=>load(page-1)} className="px-2 py-1 border rounded mr-2">Prev</button>
-              <button disabled={page>=pages} onClick={()=>load(page+1)} className="px-2 py-1 border rounded">Next</button>
+                </thead>
+                <tbody>
+                  {loading && (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                        <p className="text-sm">Loading expenses...</p>
+                      </td>
+                    </tr>
+                  )}
+                  {!loading && expenses.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                        <p className="text-sm">No expenses found. Click "Add Expense" to get started.</p>
+                      </td>
+                    </tr>
+                  )}
+                  {!loading &&
+                    expenses.map((expense) => (
+                      <tr key={expense._id} className="border-b border-gray-200 hover:bg-gray-50 transition">
+                        <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                          {new Date(expense.date).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric'
+                          })}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                            expense.businessType === 'Travel'
+                              ? 'bg-blue-100 text-blue-800'
+                              : expense.businessType === 'Dates'
+                              ? 'bg-purple-100 text-purple-800'
+                              : 'bg-pink-100 text-pink-800'
+                          }`}>
+                            {expense.businessType}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{expense.description || 'N/A'}</td>
+                        <td className="px-6 py-4 text-sm font-semibold text-red-600 text-right">
+                          -{Number(expense.amount || 0).toLocaleString('en-PK', {
+                            style: 'currency',
+                            currency: 'PKR',
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0
+                          })}
+                        </td>
+                        <td className="px-6 py-4 text-right space-x-2">
+                          <button
+                            onClick={() => openEditModal(expense)}
+                            className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition font-medium"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => deleteExpense(expense._id)}
+                            className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 transition font-medium"
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
             </div>
+
+            {/* Pagination */}
+            {pages > 1 && (
+              <div className="border-t border-gray-200 bg-gray-50 px-6 py-4 flex items-center justify-between">
+                <div className="text-sm text-gray-600">
+                  Showing {expenses.length} of {total} expenses — Page {page} / {pages}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setPage(Math.max(1, page - 1))}
+                    disabled={page <= 1}
+                    className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 transition disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
+                  >
+                    ← Prev
+                  </button>
+                  <button
+                    onClick={() => setPage(Math.min(pages, page + 1))}
+                    disabled={page >= pages}
+                    className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 transition disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
+                  >
+                    Next →
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
+      </div>
 
-        {/* Edit Modal */}
-        {editing && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-            <div className="bg-white p-6 rounded shadow w-full max-w-lg">
-              <h3 className="font-semibold mb-3">Edit Expense</h3>
-              <div className="grid grid-cols-1 gap-2">
-                <label className="text-xs">Business</label>
-                <select value={editing.businessType} onChange={(e)=>setEditing({...editing, businessType: e.target.value})} className="px-2 py-1 border rounded">
+      {/* Add/Edit Expense Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-6 py-4">
+              <h3 className="text-lg font-bold text-white">
+                {isEditing ? 'Edit Expense' : 'Add Expense'}
+              </h3>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Business Type</label>
+                <select
+                  value={formData.businessType}
+                  onChange={(e) =>
+                    setFormData({ ...formData, businessType: e.target.value as any })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
                   <option value="Dates">Dates</option>
                   <option value="Travel">Travel</option>
                   <option value="Belts">Belts</option>
                 </select>
-                <label className="text-xs">Amount</label>
-                <input type="number" value={editing.amount} onChange={(e)=>setEditing({...editing, amount: e.target.value})} className="px-2 py-1 border rounded" />
-                <label className="text-xs">Date</label>
-                <input type="date" value={editing.date ? new Date(editing.date).toISOString().slice(0,10) : ''} onChange={(e)=>setEditing({...editing, date: e.target.value})} className="px-2 py-1 border rounded" />
-                <label className="text-xs">Description</label>
-                <input value={editing.description} onChange={(e)=>setEditing({...editing, description: e.target.value})} className="px-2 py-1 border rounded" />
               </div>
-              <div className="mt-4 flex justify-end gap-2">
-                <button onClick={()=>setEditing(null)} className="px-3 py-1 border rounded">Cancel</button>
-                <button onClick={saveEdit} className="px-3 py-1 bg-indigo-600 text-white rounded">Save</button>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Amount (PKR)</label>
+                <input
+                  type="number"
+                  value={formData.amount}
+                  onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                  placeholder="0"
+                  min="0"
+                  step="100"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                <input
+                  type="text"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="e.g., Rent, Utilities, Supplies..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
+                <input
+                  type="date"
+                  value={formData.date}
+                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
               </div>
             </div>
+
+            <div className="border-t border-gray-200 px-6 py-4 flex gap-3 justify-end">
+              <button
+                onClick={() => setShowModal(false)}
+                disabled={modalLoading}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition font-medium disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveExpense}
+                disabled={modalLoading}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {modalLoading ? 'Saving...' : 'Save Expense'}
+              </button>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

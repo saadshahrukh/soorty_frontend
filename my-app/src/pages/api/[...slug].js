@@ -44,8 +44,8 @@ module.exports = async (req, res) => {
       if (endpoint === 'totals') return require('../../server/api_impl/expenses/totals.js')(req, res);
       // Handle /expenses/ID routes (PUT, DELETE) - ID can be in endpoint or resourceId
       if ((resourceId && !action) || (endpoint !== 'index' && endpoint !== 'totals' && !resourceId)) {
-        const id = resourceId || endpoint;
-        req.query.id = id;
+        const expenseId = resourceId || endpoint;
+        req.query.expenseId = expenseId;
         if (req.method === 'PUT') return require('../../server/api_impl/expenses/index.js')(req, res);
         if (req.method === 'DELETE') return require('../../server/api_impl/expenses/index.js')(req, res);
       }
@@ -89,6 +89,14 @@ module.exports = async (req, res) => {
     if (domain === 'stock') {
       if (endpoint === 'transfers') return require('../../server/api_impl/stock/transfers.js')(req, res);
       if (endpoint === 'transfer') return require('../../server/api_impl/stock/transfer.js')(req, res);
+      // Handle /stock/batch routes (PUT, DELETE for batch operations)
+      if (endpoint === 'batch') {
+        req.query.allocationId = resourceId;
+        req.query.batchId = action;
+        const batchHandler = require('../../server/api_impl/stock/batch.js');
+        if (req.method === 'PUT') return batchHandler.edit(req, res);
+        if (req.method === 'DELETE') return batchHandler.delete(req, res);
+      }
       // Handle /stock/product/ID or /stock/product/ID/allocate or /stock/product/ID/allocation
       if (endpoint === 'product') {
         req.query.productId = resourceId;
