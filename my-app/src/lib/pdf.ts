@@ -20,7 +20,8 @@ export const convertImageToBase64 = async (imagePath: string): Promise<string> =
 };
 
 export async function generateOrderSlip(order: Order) {
-  const pageWidth = 80; 
+  // EXACT ALIGNMENT FROM YOUR WORKING VERSION
+  const pageWidth = 76; 
   const pageHeight = 3276; 
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -28,110 +29,115 @@ export async function generateOrderSlip(order: Order) {
     format: [pageWidth, pageHeight]
   });
 
-  // Safe Margins: 3mm Left, 8mm Right to stop the cutting issue
-  const leftMargin = 3;
-  const rightMargin = 8; 
-  const contentWidth = pageWidth - leftMargin - rightMargin;
+  const leftMargin = 2; 
+  const rightMargin = 10; 
+  const contentWidth = pageWidth - leftMargin - rightMargin; // 64mm usable zone
 
   const centerText = (text: string, y: number) => {
     const textWidth = doc.getTextWidth(text);
-    doc.text(text, (pageWidth - textWidth) / 2, y);
+    const x = (pageWidth - textWidth) / 2;
+    doc.text(text, x, y);
   };
 
   const rightAlignText = (text: string, y: number) => {
     const textWidth = doc.getTextWidth(text);
-    doc.text(text, (leftMargin + contentWidth) - textWidth, y);
+    const x = (leftMargin + contentWidth) - textWidth; // Keeps right side safe
+    doc.text(text, x, y);
   };
 
   let yPosition = 6;
 
-  // --- 1. BIGGER LOGO ---
+  // --- LOGO (Exactly 45x22 as you liked) ---
   const logoBase64 = await convertImageToBase64('/logo.png');
   if (logoBase64) {
     try {
-      const logoW = 38; 
-      const logoH = 20;
-      doc.addImage(logoBase64, 'PNG', (pageWidth - logoW) / 2, yPosition, logoW, logoH);
-      yPosition += logoH + 4;
+      const logoWidth = 45;
+      const logoHeight = 22;
+      doc.addImage(logoBase64, 'PNG', (pageWidth - logoWidth) / 2, yPosition, logoWidth, logoHeight);
+      yPosition += logoHeight + 5;
     } catch (e) {}
   }
 
-  // --- 2. HEADER ---
-  doc.setFontSize(10);
+  // --- HEADER ---
+  doc.setFontSize(11); 
   doc.setFont('helvetica', 'bold');
   centerText('03218286245 | 02133542016', yPosition);
-  yPosition += 5;
-  doc.setFontSize(8);
+  yPosition += 5.5;
+  
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   centerText('Shop# 08 Euro Grand Park Nazimabad', yPosition);
-  yPosition += 4;
+  yPosition += 4.5;
   centerText('No 1, Karachi, Pakistan', yPosition);
-  yPosition += 6;
+  yPosition += 8;
 
-  // --- 3. DATE & BILL NO ---
+  // --- DATE & BILL NO ---
   const currentDate = new Date();
   const formattedDate = `${currentDate.getDate()}-${currentDate.getMonth() + 1}-${currentDate.getFullYear()} ${currentDate.getHours()}:${currentDate.getMinutes()}`;
-  doc.setFontSize(8);
+  
+  doc.setFontSize(9);
   doc.text(`Date: ${formattedDate}`, leftMargin, yPosition);
-  yPosition += 5;
-  doc.setFontSize(13);
+  yPosition += 5.5;
+  
+  doc.setFontSize(14); 
   doc.setFont('helvetica', 'bold');
   centerText(`Bill No: ${order.orderId}`, yPosition);
   yPosition += 8;
 
-  // --- 4. CUSTOMER DETAILS (Compact Version) ---
-  doc.setFontSize(9);
-  doc.text('Customer Details:', leftMargin, yPosition);
-  yPosition += 2;
+  // --- CUSTOMER DETAILS ---
+  const custName = (order as any).customerSupplierName || 
+                   (order as any).clientName || 
+                   (order as any).customerName || 
+                   (order as any).customer?.name || 
+                   "Walk-in Customer";
 
-  const custName = (order as any).customerSupplierName || (order as any).clientName || (order as any).customerName || (order as any).customer?.name || 'Walk-in Customer';
-  const custPhone = (order as any).customerPhone || (order as any).clientPhone || (order as any).customer?.phone || 'N/A';
-  const custAddr = (order as any).customerAddress || (order as any).clientAddress || (order as any).customer?.address || 'Karachi';
-
-  const drawCustRow = (label: string, value: string) => {
+  const drawInfoBox = (label: string, value: string, height: number) => {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    const splitVal = doc.splitTextToSize(value, contentWidth - 22);
-    const rowH = (splitVal.length * 4) + 2;
-    
-    doc.rect(leftMargin, yPosition, 20, rowH); // Label box
-    doc.text(label, leftMargin + 2, yPosition + 4.5);
+    doc.rect(leftMargin, yPosition, 20, height); 
+    doc.text(label, leftMargin + 2, yPosition + (height / 2) + 1.5);
     
     doc.setFont('helvetica', 'normal');
-    doc.rect(leftMargin + 20, yPosition, contentWidth - 20, rowH); // Value box
-    doc.text(splitVal, leftMargin + 22, yPosition + 4.5);
-    yPosition += rowH;
+    doc.rect(leftMargin + 20, yPosition, contentWidth - 20, height);
+    const wrappedValue = doc.splitTextToSize(value || 'N/A', contentWidth - 24);
+    doc.text(wrappedValue, leftMargin + 22, yPosition + 5);
+    yPosition += height;
   };
 
-  drawCustRow('Name:', custName);
-  drawCustRow('Phone:', custPhone);
-  drawCustRow('Address:', custAddr);
+  doc.setFontSize(10);
+  drawInfoBox('Name:', custName, 10);
+  drawInfoBox('Phone:', (order as any).customerPhone || (order as any).clientPhone || (order as any).customer?.phone || 'N/A', 10);
+  
+  const addr = (order as any).customerAddress || (order as any).clientAddress || (order as any).customer?.address || 'Karachi';
+  const addrLines = doc.splitTextToSize(addr, contentWidth - 24);
+  const addrBoxHeight = Math.max(10, addrLines.length * 5 + 2);
+  drawInfoBox('Address:', addr, addrBoxHeight);
 
-  // --- 5. SALE RECEIPT HEADER (Larger than customer section) ---
-  yPosition += 6;
+  yPosition += 8;
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   centerText('SALE RECIEPT', yPosition); 
-  yPosition += 6;
+  yPosition += 8;
 
-  // --- 6. PRODUCTS TABLE (Dynamic Layout) ---
-  const colWidths = [24, 12, 6, 9, 14];
-  doc.setFillColor(240, 240, 240);
-  doc.rect(leftMargin, yPosition, contentWidth, 7, 'F');
-  doc.rect(leftMargin, yPosition, contentWidth, 7);
+  // --- PRODUCT TABLE (64mm Safety Width) ---
+  const colWidths = [23, 12, 6, 9, 14];
+  doc.setFillColor(230, 230, 230);
+  doc.rect(leftMargin, yPosition, contentWidth, 8, 'F');
+  doc.rect(leftMargin, yPosition, contentWidth, 8);
   
-  doc.setFontSize(8.5);
+  doc.setFontSize(9);
   let curX = leftMargin;
   ['Item', 'Price', 'Qty', 'Disc', 'Amt'].forEach((h, i) => {
-    doc.text(h, curX + 1.5, yPosition + 4.5);
+    doc.text(h, curX + 1, yPosition + 5.5);
     curX += colWidths[i];
-    if (i < 4) doc.line(curX, yPosition, curX, yPosition + 7);
+    if (i < 4) doc.line(curX, yPosition, curX, yPosition + 8);
   });
-  yPosition += 7;
+  yPosition += 8;
 
+  // --- ITEMS CALCULATION ---
+  doc.setFont('helvetica', 'normal');
+  const products = (order as any).products || [order]; 
   let totalSelling = 0;
   let totalItemDiscount = 0;
-  const products = (order as any).products || [order];
 
   products.forEach((p: any) => {
     const sp = Number(p.sellingPrice || 0);
@@ -143,78 +149,78 @@ export async function generateOrderSlip(order: Order) {
     totalItemDiscount += disc;
 
     const pName = doc.splitTextToSize(p.name || p.productServiceName || '', colWidths[0] - 2);
-    const rowH = Math.max(7, pName.length * 4);
+    const rowH = Math.max(9, pName.length * 5);
     
     doc.rect(leftMargin, yPosition, contentWidth, rowH);
     let rowX = leftMargin;
-    doc.text(pName, rowX + 1, yPosition + 4.5); // Name
-    rowX += colWidths[0];
-    doc.line(rowX, yPosition, rowX, yPosition + rowH);
-    doc.text(sp.toFixed(0), rowX + 1, yPosition + 4.5); // Price
-    rowX += colWidths[1];
-    doc.line(rowX, yPosition, rowX, yPosition + rowH);
-    doc.text(String(qty), rowX + 1.5, yPosition + 4.5); // Qty
-    rowX += colWidths[2];
-    doc.line(rowX, yPosition, rowX, yPosition + rowH);
-    doc.text(disc.toFixed(0), rowX + 1, yPosition + 4.5); // Disc
-    rowX += colWidths[3];
-    doc.line(rowX, yPosition, rowX, yPosition + rowH);
-    doc.text(lineAmt.toFixed(0), rowX + 1, yPosition + 4.5); // Amt
+    doc.text(pName, rowX + 1, yPosition + 5.5); 
+    rowX += colWidths[0]; doc.line(rowX, yPosition, rowX, yPosition + rowH);
+    doc.text(sp.toFixed(0), rowX + 1, yPosition + 6);
+    rowX += colWidths[1]; doc.line(rowX, yPosition, rowX, yPosition + rowH);
+    doc.text(String(qty), rowX + 1.5, yPosition + 6);
+    rowX += colWidths[2]; doc.line(rowX, yPosition, rowX, yPosition + rowH);
+    doc.text(disc.toFixed(0), rowX + 1, yPosition + 6);
+    rowX += colWidths[3]; doc.line(rowX, yPosition, rowX, yPosition + rowH);
+    doc.text(lineAmt.toFixed(0), rowX + 1, yPosition + 6);
     yPosition += rowH;
   });
 
-  // --- 7. TOTALS SECTION (With DC and Discounts) ---
-  yPosition += 6;
-  doc.setFontSize(10);
+  // --- TOTALS (Restoring Delivery & Order Discounts) ---
+  yPosition += 8;
+  doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
-
-  const orderDiscount = Number((order as any).orderDiscount || 0);
+  
   const delivery = Number((order as any).deliveryCharge || 0);
+  const orderDiscount = Number((order as any).orderDiscount || 0);
   const totalDiscount = totalItemDiscount + orderDiscount;
   const grandTotal = Number((order as any).finalAmount || (totalSelling - totalDiscount + delivery));
 
-  const drawTotalLine = (label: string, value: string) => {
+  const drawTotalLine = (label: string, value: string, isBig = false) => {
+    doc.setFontSize(isBig ? 12 : 11);
     doc.text(label, leftMargin, yPosition);
     rightAlignText(value, yPosition);
-    yPosition += 5.5;
+    yPosition += 6.5;
   };
 
   drawTotalLine('Total Bill:', totalSelling.toFixed(2));
-  if (totalDiscount > 0) drawTotalLine('Discount:', totalDiscount.toFixed(2));
+  if (totalDiscount > 0) drawTotalLine('Discount:', `-${totalDiscount.toFixed(2)}`);
   if (delivery > 0) drawTotalLine('Delivery (DC):', delivery.toFixed(2));
   
   doc.line(leftMargin, yPosition - 1, leftMargin + contentWidth, yPosition - 1);
-  yPosition += 2;
-  doc.setFontSize(11);
-  drawTotalLine('Grand Total:', grandTotal.toFixed(2));
-
-  // --- 8. PAYMENT STATUS ---
-  let paid = 0;
-  if (order.paymentStatus === 'Paid') paid = grandTotal;
-  else if (order.paymentStatus === 'Partial') paid = Number((order as any).partialPaidAmount || 0);
+  yPosition += 2.5;
+  
+  // --- PAYMENT STATUS ---
+  let paid = order.paymentStatus === 'Paid' ? grandTotal : Number((order as any).partialPaidAmount || 0);
   const balance = Math.max(0, grandTotal - paid);
 
-  doc.setFontSize(10);
+  drawTotalLine('Grand Total:', grandTotal.toFixed(2), true);
   drawTotalLine('Amount Paid:', paid.toFixed(2));
-  doc.setFontSize(11);
-  drawTotalLine('Balance:', balance.toFixed(2));
+  drawTotalLine('Balance:', balance.toFixed(2), true);
 
-  // --- 9. FOOTER ---
-  yPosition += 6;
-  doc.setFontSize(8);
+  // --- FOOTER ---
+  yPosition += 8;
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   centerText('Thankyou For Shopping. Come Again.', yPosition);
-  yPosition += 4;
+  yPosition += 5;
   centerText('No Return No Exchange Without Bill', yPosition);
-  yPosition += 6;
+  
+  yPosition += 9;
   doc.setFont('helvetica', 'bold');
   centerText('Meezan Bank | Pak Soorty Dates', yPosition);
-  yPosition += 4.5;
+  yPosition += 5;
   centerText('Account No: 99 6201 0943 5654', yPosition);
+
+  // --- SOFTWARE INFO ---
+  yPosition += 8;
+  doc.setFontSize(6);
+  doc.setFont('helvetica', 'normal');
+  centerText('Software Design By Metawayz', yPosition);
+  yPosition += 3;
+  centerText('www.metawayz.com | +923452208269', yPosition);
 
   doc.save(`SALE_RECIEPT_${order.orderId}.pdf`);
 }
-
 
 export function generateOrdersReport(orders: Order[], title = 'Orders Report') {
   const doc = new jsPDF('l');
