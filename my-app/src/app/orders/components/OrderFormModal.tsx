@@ -379,111 +379,157 @@ export default function OrderFormModal({
 
       {/* Selected products list */}
       {(formData.products || []).length > 0 && (
-        <div className="mt-2 space-y-2">
-          {(formData.products || []).map((it: any, idx: number) => (
-            <div key={it.productId || idx} className="flex items-center gap-2 border rounded-lg p-2">
-              <div className="flex-1">
-                <div className="font-medium text-sm">{it.name}</div>
-                <div className="text-xs text-gray-500">Base: {it.basePrice}</div>
-              </div>
-              <div className="w-20">
-                <label className="text-xs text-gray-600">Qty</label>
-                <input
-                  type="number"
-                  value={it.quantity}
-                  min={1}
-                  max={it.availableStock || 999999}
-                  onChange={(e) => {
-                    const val = Math.max(1, Number(e.target.value || 1));
-                    const capped = Math.min(val, it.availableStock || val);
-                    setFormData((prev: FormData) => {
-                      const items = (prev.products || []).slice() as any[];
-                      items[idx].quantity = capped;
-                      // if price tiers exist, keep selected tier price, else use basePrice
-                      if (items[idx].priceTiers && items[idx].priceTiers.length > 0 && items[idx].selectedTier >= 0) {
-                        const sel = items[idx].selectedTier || 0;
-                        const tierPrice = Number(items[idx].priceTiers[sel]?.price || items[idx].basePrice || 0);
-                        // store unit price
-                        items[idx].sellingPrice = tierPrice;
-                      } else {
-                        // store unit price
-                        items[idx].sellingPrice = Number(items[idx].basePrice || 0);
-                      }
-                      // costPrice is unit cost
-                      items[idx].costPrice = Number(items[idx].baseCost || 0);
-                      return { ...prev, products: items };
-                    });
-                  }}
-                  className="w-full px-2 py-1 border rounded"
-                />
-                {it.availableStock !== undefined && (
-                  <div className="text-xs text-gray-500">Stock: {it.availableStock}</div>
-                )}
-              </div>
-              <div className="w-24">
-                <label className="text-xs text-gray-600">Disc</label>
-                <input
-                  type="number"
-                  value={it.discount || 0}
-                  min={0}
-                  onChange={(e) => {
-                    const val = Number(e.target.value || 0);
-                    setFormData((prev: FormData) => {
-                      const items = (prev.products || []).slice() as any[];
-                      items[idx].discount = val;
-                      return { ...prev, products: items };
-                    });
-                  }}
-                  className="w-full px-2 py-1 border rounded"
-                />
-                {it.priceTiers && it.priceTiers.length > 0 && (
-                  <div className="mt-2">
-                    <label className="text-xs text-gray-600">Price Tier</label>
-                    <select
-                      value={it.selectedTier || 0}
+        <div className="mt-2 space-y-3 col-span-1 md:col-span-2">
+          <h4 className="font-semibold text-gray-900">Selected Products</h4>
+          {(formData.products || []).map((it: any, idx: number) => {
+            // Calculate profit per unit
+            const unitSellingPrice = it.sellingPrice || it.basePrice || 0;
+            const unitCostPrice = it.costPrice || it.baseCost || 0;
+            const unitProfit = unitSellingPrice - unitCostPrice;
+            const totalProfit = unitProfit * (it.quantity || 1);
+            
+            return (
+              <div key={it.productId || idx} className="border-2 border-indigo-100 rounded-lg p-3 bg-indigo-50">
+                {/* Product Header */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-900">{it.name}</div>
+                    <div className="text-xs text-gray-600">Stock: {it.availableStock || 0} units available</div>
+                  </div>
+                  <button 
+                    type="button" 
+                    onClick={() => setFormData((prev: FormData) => ({ ...prev, products: (prev.products || []).filter((_, i) => i !== idx) }))} 
+                    className="px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium"
+                  >
+                    Remove
+                  </button>
+                </div>
+
+                {/* Quantity */}
+                <div className="grid grid-cols-3 gap-3 mb-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 mb-1 block">Quantity</label>
+                    <input
+                      type="number"
+                      value={it.quantity}
+                      min={1}
+                      max={it.availableStock || 999999}
                       onChange={(e) => {
-                        const sel = Number(e.target.value || 0);
+                        const val = Math.max(1, Number(e.target.value || 1));
+                        const capped = Math.min(val, it.availableStock || val);
                         setFormData((prev: FormData) => {
                           const items = (prev.products || []).slice() as any[];
-                          items[idx].selectedTier = sel;
-                          const tierPrice = Number(items[idx].priceTiers[sel]?.price || items[idx].basePrice || 0);
-                          // store unit price when a tier is selected
-                          items[idx].sellingPrice = tierPrice;
+                          items[idx].quantity = capped;
                           return { ...prev, products: items };
                         });
                       }}
-                      className="w-full px-2 py-1 border rounded"
-                    >
-                      {it.priceTiers.map((pt: any, i: number) => (
-                        <option key={i} value={i}>{pt.label} — {pt.price}</option>
-                      ))}
-                    </select>
+                      className="w-full px-2 py-2 border border-gray-300 rounded-lg font-medium"
+                    />
                   </div>
-                )}
+
+                  {/* Cost Price - LOCKED */}
+                  <div>
+                    <label className="text-xs font-medium text-red-700 mb-1 block">Cost Price (LOCKED)</label>
+                    <div className="px-2 py-2 border-2 border-red-300 bg-red-50 rounded-lg text-sm font-medium text-red-900">
+                      ₹ {Number(unitCostPrice).toFixed(2)}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">From: {it.baseCost === it.costPrice ? 'Base Cost' : 'FIFO Warehouse'}</div>
+                  </div>
+
+                  {/* Selling Price - UNLOCKED */}
+                  <div>
+                    <label className="text-xs font-medium text-green-700 mb-1 block">Selling Price (EDITABLE)</label>
+                    <input
+                      type="number"
+                      value={unitSellingPrice}
+                      step="0.01"
+                      min="0"
+                      onChange={(e) => {
+                        const newPrice = parseFloat(e.target.value || '0');
+                        setFormData((prev: FormData) => {
+                          const items = (prev.products || []).slice() as any[];
+                          items[idx].sellingPrice = newPrice;
+                          return { ...prev, products: items };
+                        });
+                      }}
+                      className="w-full px-2 py-2 border-2 border-green-300 bg-green-50 rounded-lg text-sm font-medium text-green-900"
+                    />
+                  </div>
+                </div>
+
+                {/* Price Tier Selection & Discount */}
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  {it.priceTiers && it.priceTiers.length > 0 && (
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 mb-1 block">Price Tier</label>
+                      <select
+                        value={it.selectedTier || 0}
+                        onChange={(e) => {
+                          const sel = Number(e.target.value || 0);
+                          setFormData((prev: FormData) => {
+                            const items = (prev.products || []).slice() as any[];
+                            items[idx].selectedTier = sel;
+                            const tierPrice = Number(items[idx].priceTiers[sel]?.price || items[idx].basePrice || 0);
+                            items[idx].sellingPrice = tierPrice;
+                            return { ...prev, products: items };
+                          });
+                        }}
+                        className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
+                      >
+                        {it.priceTiers.map((pt: any, i: number) => (
+                          <option key={i} value={i}>{pt.label} — ₹{pt.price}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 mb-1 block">Line Discount (Rs)</label>
+                    <input
+                      type="number"
+                      value={it.discount || 0}
+                      min={0}
+                      step="0.01"
+                      onChange={(e) => {
+                        const val = Number(e.target.value || 0);
+                        setFormData((prev: FormData) => {
+                          const items = (prev.products || []).slice() as any[];
+                          items[idx].discount = val;
+                          return { ...prev, products: items };
+                        });
+                      }}
+                      className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Summary Stats */}
+                <div className="grid grid-cols-4 gap-2 pt-2 border-t border-indigo-200">
+                  <div className="text-center">
+                    <div className="text-xs text-gray-600">Unit Profit</div>
+                    <div className={`text-sm font-bold ${unitProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ₹ {unitProfit.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs text-gray-600">Qty</div>
+                    <div className="text-sm font-bold text-blue-600">{it.quantity}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs text-gray-600">Total Line</div>
+                    <div className="text-sm font-bold text-indigo-600">
+                      ₹ {(unitSellingPrice * (it.quantity || 1) - (it.discount || 0)).toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs text-gray-600">Total Profit</div>
+                    <div className={`text-sm font-bold ${totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ₹ {totalProfit.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
               </div>
-                <div className="w-28 text-right">
-                <div className="text-xs text-gray-600">Line</div>
-                <div className="font-medium">{
-                  (() => {
-                    const qty = Number(it.quantity || 0) || 0;
-                    let lineTotal = 0;
-                    if (it.priceTiers && Array.isArray(it.priceTiers) && (it.selectedTier !== undefined)) {
-                      const unit = Number(it.priceTiers[it.selectedTier]?.price || 0);
-                      lineTotal = unit * qty;
-                    } else if (it.sellingPrice !== undefined) {
-                      // sellingPrice is stored as unit price
-                      lineTotal = Number(it.sellingPrice || 0) * qty;
-                    } else {
-                      lineTotal = Number(it.basePrice || 0) * qty;
-                    }
-                    lineTotal = lineTotal - Number(it.discount || 0);
-                    return Math.round(lineTotal * 100) / 100;
-                  })()
-                }</div>
-              </div>
-              <button type="button" onClick={() => setFormData((prev: FormData) => ({ ...prev, products: (prev.products || []).filter((_, i) => i !== idx) }))} className="px-2 py-1 text-red-600">Remove</button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </>
