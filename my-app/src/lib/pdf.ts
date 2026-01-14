@@ -48,7 +48,7 @@ export async function generateOrderSlip(order: Order) {
   let yPosition = 6;
 
   // --- LOGO (Exactly 45x22 as you liked) ---
-  const logoBase64 = await convertImageToBase64('/logo.png');
+  const logoBase64 = await convertImageToBase64('/bnw.png');
   if (logoBase64) {
     try {
       const logoWidth = 45;
