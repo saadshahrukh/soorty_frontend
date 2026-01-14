@@ -52,7 +52,7 @@ export async function generateOrderSlip(order: Order) {
   if (logoBase64) {
     try {
       const logoWidth = 45;
-      const logoHeight = 22;
+      const logoHeight = 42;
       doc.addImage(logoBase64, 'PNG', (pageWidth - logoWidth) / 2, yPosition, logoWidth, logoHeight);
       yPosition += logoHeight + 5;
     } catch (e) {}

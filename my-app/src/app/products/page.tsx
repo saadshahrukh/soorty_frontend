@@ -10,6 +10,7 @@ import { toast } from "@/store/toastStore";
 type Warehouse = { _id: string; name: string };
 type StockBatch = { batchId: string; quantity: number; costPrice: number; addedAt: string };
 type StockAlloc = { 
+  _id?: string;
   warehouseId: string; 
   warehouseName: string; 
   quantity: number;
@@ -246,7 +247,11 @@ export default function ProductsPage() {
   };
 
   const deleteBatch = async (allocationId: string, batchId: string) => {
-    if (!confirm("Delete this batch? Stock quantity will be reduced.")) return;
+    if (!allocationId || !batchId) {
+      toast.error("Invalid batch or allocation ID");
+      return;
+    }
+    if (!confirm("Delete this batch? Stock quantity will be reduced. This cannot be undone.")) return;
     try {
       await api.delete(`/stock/batch/${allocationId}/${batchId}`);
       toast.success("Batch deleted successfully");
@@ -255,6 +260,7 @@ export default function ProductsPage() {
         await loadProducts();
       }
     } catch (error: any) {
+      console.error('Delete batch error:', error);
       toast.error(error?.response?.data?.message || "Failed to delete batch");
     }
   };

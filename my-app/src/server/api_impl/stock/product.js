@@ -22,6 +22,7 @@ module.exports.get = async (req, res) => {
     const batchTotal = a.batches.reduce((sum, b) => sum + b.quantity, 0);
     const currentCostPrice = a.batches.length > 0 ? a.batches[0].costPrice : 0;
     return {
+      _id: a._id,
       warehouseId: a.warehouseId._id,
       warehouseName: a.warehouseId.name,
       quantity: batchTotal,
