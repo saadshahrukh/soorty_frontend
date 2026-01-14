@@ -541,7 +541,7 @@ export default function OrderFormModal({
               required
               min="0"
               step="0.01"
-              readOnly={(formData.businessType === 'Dates' && (formData.products || []).length > 0) ? true : false}
+              // readOnly={(formData.businessType === 'Dates' && (formData.products || []).length > 0) ? true : false}
             />
           </div>
 
