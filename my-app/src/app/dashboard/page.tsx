@@ -35,6 +35,8 @@ export default function DashboardPage() {
   const [startDate, setStartDate] = useState<string>(''); // ISO string for datetime-local
   const [endDate, setEndDate] = useState<string>('');
   const [logsCount, setLogsCount] = useState(0);
+  const [expenses, setExpenses] = useState<any[]>([]);
+  const [expensesLoading, setExpensesLoading] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -47,6 +49,7 @@ export default function DashboardPage() {
       // Initial: current month summary + all orders
       fetchOrders();
       fetchSummary();
+      fetchExpensesData();
     }
   }, [isAuthenticated]);
 
@@ -86,6 +89,26 @@ export default function DashboardPage() {
     }
   };
 
+  const fetchExpensesData = async () => {
+    setExpensesLoading(true);
+    try {
+      const params: any = { page: 1, limit: 1000 }; // Fetch all for dashboard totals
+      if (startDate) params.startDate = new Date(startDate).toISOString();
+      if (endDate) params.endDate = new Date(endDate).toISOString();
+      
+      const { data } = await api.get('/expenses', { params });
+      setExpenses((data?.items || data || []).map((e: any) => ({
+        ...e,
+        amount: Number(e.amount || 0)
+      })));
+    } catch (error) {
+      console.error('Fetch expenses error:', error);
+      setExpenses([]);
+    } finally {
+      setExpensesLoading(false);
+    }
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -109,6 +132,9 @@ export default function DashboardPage() {
     // The graph will automatically update because computedByBusiness depends on orders
     await fetchOrders(params);
     
+    // Fetch expenses for the same date range
+    await fetchExpensesData();
+    
     // Clear summary when filters are applied so graph uses filtered orders data
     // When NO filters are active, fetch default monthly summary
     if (!startDate && !endDate && activeBusiness === 'All') {
@@ -129,6 +155,8 @@ export default function DashboardPage() {
     await fetchOrders();
     // Fetch default monthly summary
     await fetchSummary();
+    // Fetch expenses
+    await fetchExpensesData();
   };
 
   const computedByBusiness = useMemo(() => {
@@ -180,8 +208,13 @@ export default function DashboardPage() {
       pending: acc.pending + g.pending,
       loss: acc.loss + g.loss,
     }), { sales: 0, cost: 0, profit: 0, pending: 0, loss: 0 });
+    
+    // Deduct total expenses from profit
+    const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    totals.profit -= totalExpenses;
+    
     return { groups, totals };
-  }, [orders]);
+  }, [orders, expenses]);
 
   const businessOrders = (business: 'Travel' | 'Dates' | 'Belts' | 'All'): Order[] => {
     const safeOrders = orders || [];
@@ -278,15 +311,20 @@ export default function DashboardPage() {
   const displayTotals = useMemo(() => {
     const defaultTotals = { sales: 0, cost: 0, profit: 0, pending: 0, loss: 0 };
     
+    // Calculate total expenses to deduct
+    const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    
     if (useFilteredData) {
       // Use computed totals from filtered orders
       return computedByBusiness?.totals || defaultTotals;
     } else if (summary?.totals) {
       // Use API summary totals only when NO filters are active
-      return summary.totals;
+      const summaryTotals = { ...summary.totals };
+      summaryTotals.profit -= totalExpenses;
+      return summaryTotals;
     }
     return defaultTotals;
-  }, [useFilteredData, computedByBusiness, summary]);
+  }, [useFilteredData, computedByBusiness, summary, expenses]);
 
   if (loading || summaryLoading) {
     return (

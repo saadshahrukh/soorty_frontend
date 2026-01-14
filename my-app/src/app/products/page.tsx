@@ -53,6 +53,7 @@ export default function ProductsPage() {
   const [basePrice, setBasePrice] = useState(0);
   const [baseCost, setBaseCost] = useState(0);
   const [deliveryCharges, setDeliveryCharges] = useState(0);
+  const [priceTiers, setPriceTiers] = useState<Array<{ label: string; price: number }>>([]);
 
   // Warehouse management
   const [newWarehouseName, setNewWarehouseName] = useState("");
@@ -137,6 +138,7 @@ export default function ProductsPage() {
           basePrice,
           baseCost,
           deliveryCharges,
+          priceTiers: priceTiers.filter(t => t.label && t.price >= 0),
         });
         toast.success("Product updated");
       } else {
@@ -146,6 +148,7 @@ export default function ProductsPage() {
           name,
           basePrice,
           deliveryCharges,
+          priceTiers: priceTiers.filter(t => t.label && t.price >= 0),
         });
         toast.success("Product created");
       }
@@ -163,6 +166,7 @@ export default function ProductsPage() {
     setBasePrice(0);
     setBaseCost(0);
     setDeliveryCharges(0);
+    setPriceTiers([]);
   };
 
   const editProduct = (p: Product) => {
@@ -171,6 +175,7 @@ export default function ProductsPage() {
     setBasePrice(p.basePrice);
     setBaseCost(p.baseCost || 0);
     setDeliveryCharges(p.deliveryCharges || 0);
+    setPriceTiers((p as any).priceTiers || []);
     setShowAddProductModal(true);
   };
 
@@ -238,6 +243,20 @@ export default function ProductsPage() {
     setEditingWarehouse(null);
     setEditingCurrentQty(0);
     setAllocQty(0);
+  };
+
+  const deleteBatch = async (allocationId: string, batchId: string) => {
+    if (!confirm("Delete this batch? Stock quantity will be reduced.")) return;
+    try {
+      await api.delete(`/stock/batch/${allocationId}/${batchId}`);
+      toast.success("Batch deleted successfully");
+      if (selectedProduct) {
+        await openStockModal(selectedProduct);
+        await loadProducts();
+      }
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || "Failed to delete batch");
+    }
   };
 
   const updateAllocation = async () => {
@@ -482,7 +501,7 @@ export default function ProductsPage() {
       {/* Add/Edit Product Modal */}
       {showAddProductModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 max-h-[85vh] overflow-y-auto">
             <h2 className="text-2xl font-bold text-gray-900 mb-4">
               {editingId ? "Edit Product" : "Add New Product"}
             </h2>
@@ -543,6 +562,66 @@ export default function ProductsPage() {
                   placeholder="0.00"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 />
+              </div>
+
+              {/* Price Tiers Section */}
+              <div className="border-t pt-4 mt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-gray-900">Price Tiers</h3>
+                  <p className="text-xs text-gray-500">Different selling prices for different customer types</p>
+                </div>
+                
+                <div className="space-y-2">
+                  {priceTiers.map((tier, idx) => (
+                    <div key={idx} className="flex gap-2 items-end">
+                      <div className="flex-1">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Label</label>
+                        <input
+                          type="text"
+                          value={tier.label}
+                          onChange={(e) => {
+                            const newTiers = [...priceTiers];
+                            newTiers[idx].label = e.target.value;
+                            setPriceTiers(newTiers);
+                          }}
+                          placeholder="e.g., Bulk, Wholesale, Retail+"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Price</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={tier.price}
+                          onChange={(e) => {
+                            const newTiers = [...priceTiers];
+                            newTiers[idx].price = parseFloat(e.target.value) || 0;
+                            setPriceTiers(newTiers);
+                          }}
+                          placeholder="0.00"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setPriceTiers(priceTiers.filter((_, i) => i !== idx))}
+                        className="px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 text-sm font-medium"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setPriceTiers([...priceTiers, { label: "", price: basePrice }])}
+                  className="w-full mt-2 px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 text-sm font-medium"
+                >
+                  + Add Price Tier
+                </button>
               </div>
             </div>
 
@@ -763,12 +842,23 @@ export default function ProductsPage() {
                         <div className="mt-2 space-y-2">
                           <p className="text-xs font-semibold text-gray-700">Batches (FIFO Order):</p>
                           {alloc.batches.map((batch, idx) => (
-                            <div key={batch.batchId} className={`text-xs p-2 rounded border ${idx === 0 ? 'bg-blue-50 border-blue-300' : 'bg-gray-100 border-gray-300'}`}>
-                              <div className="font-semibold text-gray-900">
-                                {idx === 0 && "▶ "} Batch {idx + 1}: {batch.quantity} units @ ₹{batch.costPrice}
+                            <div key={batch.batchId} className={`text-xs p-3 rounded border ${idx === 0 ? 'bg-blue-50 border-blue-300' : 'bg-gray-100 border-gray-300'}`}>
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <div className="font-semibold text-gray-900">
+                                    {idx === 0 && "▶ "} Batch {idx + 1}: {batch.quantity} units @ ₹{batch.costPrice}
+                                  </div>
+                                  <div className="text-gray-600">ID: {batch.batchId}</div>
+                                  <div className="text-gray-600">Added: {new Date(batch.addedAt).toLocaleDateString()}</div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteBatch(alloc._id, batch.batchId)}
+                                  className="px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 text-xs font-medium ml-2"
+                                >
+                                  Delete
+                                </button>
                               </div>
-                              <div className="text-gray-600">ID: {batch.batchId}</div>
-                              <div className="text-gray-600">Added: {new Date(batch.addedAt).toLocaleDateString()}</div>
                             </div>
                           ))}
                         </div>
