@@ -20,51 +20,25 @@ export default function OrderFormModal({
   setFormData,
   handleSubmit
 }: OrderFormModalProps) {
-  const [products, setProducts] = useState<{ _id: string; name: string; basePrice: number; baseCost?: number; stock?: number; priceTiers?: { label: string; price: number }[]; warehouseQty?: number; warehouseCostPrice?: number }[]>([]);
+  const [products, setProducts] = useState<{ _id: string; name: string; basePrice: number; baseCost?: number; stock?: number; priceTiers?: { label: string; price: number }[] }[]>([]);
   const [productQuery, setProductQuery] = useState('');
   const [loadingLookup, setLoadingLookup] = useState(false);
   const [warehouses, setWarehouses] = useState<{ _id: string; name: string }[]>([]);
 
   useEffect(() => {
     const loadProducts = async () => {
-      if (formData.businessType === 'Dates' && formData.warehouseId) {
-        try {
-          const params: any = { businessType: 'Dates' };
-          if (productQuery) params.q = productQuery;
-          // Get all products for this business type
-          const { data: allProducts } = await api.get('/products', { params });
-          
-          // For each product, fetch warehouse-specific inventory
-          const enrichedProducts = await Promise.all(
-            (allProducts || []).map(async (product: any) => {
-              try {
-                const { data: stockData } = await api.get(`/stock/product/${product._id}`);
-                // Find allocation for selected warehouse
-                const warehouseAlloc = stockData.allocations?.find((a: any) => a.warehouseId === formData.warehouseId);
-                return {
-                  ...product,
-                  warehouseQty: warehouseAlloc?.quantity || 0,
-                  warehouseCostPrice: warehouseAlloc?.currentCostPrice || product.baseCost || 0,
-                  batches: warehouseAlloc?.batches || []
-                };
-              } catch (e) {
-                return { ...product, warehouseQty: 0, warehouseCostPrice: 0, batches: [] };
-              }
-            })
-          );
-          
-          // Filter out products with 0 quantity in selected warehouse
-          setProducts(enrichedProducts.filter(p => p.warehouseQty > 0));
-        } catch (error) {
-          console.error('Failed to load products:', error);
-          setProducts([]);
-        }
+      if (formData.businessType === 'Dates') {
+        const params: any = { businessType: 'Dates' };
+        if (productQuery) params.q = productQuery;
+        if (formData.warehouseId) params.warehouseId = formData.warehouseId;
+        const { data } = await api.get('/products', { params });
+        setProducts(data);
       } else {
         setProducts([]);
       }
     };
     loadProducts();
-  }, [formData.businessType, formData.warehouseId, productQuery, showForm]);
+  }, [formData.businessType, productQuery, showForm]);
 
   useEffect(() => {
     // load warehouses for selection
@@ -107,51 +81,14 @@ export default function OrderFormModal({
     try {
       setLoadingLookup(true);
       const { data } = await api.get('/customers', { params: { phone } });
-      
-      // data can be an array or single object
-      const customer = Array.isArray(data) ? data[0] : data;
-      
-      if (customer && customer.name) {
-        // Found customer - populate all fields
-        setFormData((prev: FormData) => ({ 
-          ...prev, 
-          clientPhone: customer.phone || phone, 
-          clientName: customer.name || '', 
-          clientAddress: customer.address || '', 
-          customerSupplierName: customer.name || prev.customerSupplierName 
-        }));
+      if (data) {
+        setFormData((prev: FormData) => ({ ...prev, clientPhone: data.phone || phone, clientName: data.name || '', clientAddress: data.address || '', customerSupplierName: data.name || prev.customerSupplierName }));
       } else {
-        // Customer not found - check if user has manually entered name/address
-        if (formData.clientName && formData.clientAddress) {
-          // User has entered name and address - CREATE new customer
-          try {
-            const createPayload = {
-              name: formData.clientName,
-              phone: phone,
-              address: formData.clientAddress
-            };
-            const { data: created } = await api.post('/customers', createPayload);
-            if (created && created.name) {
-              setFormData((prev: FormData) => ({ 
-                ...prev, 
-                clientPhone: created.phone || phone,
-                clientName: created.name,
-                clientAddress: created.address || '',
-                customerSupplierName: created.name
-              }));
-            }
-          } catch (createError) {
-            console.error('Failed to create customer:', createError);
-            // Still allow form submission even if customer creation fails
-          }
-        } else {
-          // No customer found and no manual entry - just keep the phone and clear other fields
-          setFormData((prev: FormData) => ({ ...prev, clientPhone: phone, clientName: '', clientAddress: '' }));
-        }
+        // Not found -> clear name/address but keep phone
+        setFormData((prev: FormData) => ({ ...prev, clientPhone: phone, clientName: '', clientAddress: '' }));
       }
     } catch (e) {
-      // API error - user can enter manually then create new
-      console.error('Customer lookup error:', e);
+      // not found or error
       setFormData((prev: FormData) => ({ ...prev, clientPhone: phone, clientName: '', clientAddress: '' }));
     } finally {
       setLoadingLookup(false);
@@ -196,7 +133,7 @@ export default function OrderFormModal({
   if (!showForm) return null;
 
   return (
-    <div className="fixed inset-0 !overflow-scroll z-50 flex items-center justify-center bg-black/40">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold">{editingOrder ? 'Edit Order' : 'New Order'}</h2>
@@ -320,9 +257,9 @@ export default function OrderFormModal({
               <div
                 key={p._id}
                 onClick={() => {
-                  // prevent adding if out of stock in selected warehouse
-                  if ((p.warehouseQty || 0) <= 0) {
-                    toast.error('Product is out of stock in selected warehouse');
+                  // prevent adding if out of stock
+                  if ((p.stock || 0) <= 0) {
+                    toast.error('Product is out of stock');
                     return;
                   }
                   // add or increment product in formData.products
@@ -330,12 +267,13 @@ export default function OrderFormModal({
                     const items = (prev.products || []).slice() as any[];
                     const idx = items.findIndex(i => i.productId === p._id);
                     if (idx >= 0) {
-                      // do not exceed warehouse stock
+                      // do not exceed stock
                       const currentQty = Number(items[idx].quantity || 0);
-                      const newQty = Math.min((p.warehouseQty || Infinity), currentQty + 1);
+                      const newQty = Math.min((p.stock || Infinity), currentQty + 1);
                       items[idx].quantity = newQty;
-                      // Use FIFO cost price from this warehouse
-                      items[idx].costPrice = Number(p.warehouseCostPrice || p.baseCost || 0);
+                      // sellingPrice and costPrice represent unit prices and should not be multiplied here
+                      items[idx].sellingPrice = Number(items[idx].sellingPrice || items[idx].basePrice || p.basePrice || 0);
+                      items[idx].costPrice = Number(items[idx].baseCost || p.baseCost || 0);
                     } else {
                       // build composite tiers: default (basePrice) + configured tiers
                       const extraTiers = (p.priceTiers || []).map((t: any) => ({ label: t.label, price: Number(t.price || 0) }));
@@ -346,11 +284,11 @@ export default function OrderFormModal({
                         name: p.name,
                         quantity: 1,
                         basePrice: p.basePrice,
-                        baseCost: p.warehouseCostPrice || p.baseCost || 0,
+                        baseCost: p.baseCost || 0,
                         sellingPrice: unitPrice,
-                        costPrice: p.warehouseCostPrice || p.baseCost || 0,
+                        costPrice: p.baseCost || 0,
                         discount: 0,
-                        availableStock: p.warehouseQty || 0,
+                        availableStock: p.stock || 0,
                         priceTiers: compositeTiers,
                         selectedTier: 0
                       } as any);
@@ -363,8 +301,9 @@ export default function OrderFormModal({
               >
                 <div>
                   <div className="font-medium text-gray-800">{p.name}</div>
-                  <div className="text-xs text-gray-500">Price: {p.basePrice} • Qty: {(p.warehouseQty || 0)} • Cost: {(p.warehouseCostPrice || 0).toFixed(2)} (FIFO)</div>
+                  <div className="text-xs text-gray-500">Base: {p.basePrice} • Stock: {(p.stock || 0)}</div>
                 </div>
+                <div className="text-xs text-gray-500">{(p.priceTiers && p.priceTiers.length > 0) ? `${p.priceTiers[0].label}: ${p.priceTiers[0].price}` : ''}</div>
               </div>
             ))}
           </div>
@@ -379,157 +318,111 @@ export default function OrderFormModal({
 
       {/* Selected products list */}
       {(formData.products || []).length > 0 && (
-        <div className="mt-2 space-y-3 col-span-1 md:col-span-2">
-          <h4 className="font-semibold text-gray-900">Selected Products</h4>
-          {(formData.products || []).map((it: any, idx: number) => {
-            // Calculate profit per unit
-            const unitSellingPrice = it.sellingPrice || it.basePrice || 0;
-            const unitCostPrice = it.costPrice || it.baseCost || 0;
-            const unitProfit = unitSellingPrice - unitCostPrice;
-            const totalProfit = unitProfit * (it.quantity || 1);
-            
-            return (
-              <div key={it.productId || idx} className="border-2 border-indigo-100 rounded-lg p-3 bg-indigo-50">
-                {/* Product Header */}
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex-1">
-                    <div className="font-semibold text-gray-900">{it.name}</div>
-                    <div className="text-xs text-gray-600">Stock: {it.availableStock || 0} units available</div>
-                  </div>
-                  <button 
-                    type="button" 
-                    onClick={() => setFormData((prev: FormData) => ({ ...prev, products: (prev.products || []).filter((_, i) => i !== idx) }))} 
-                    className="px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium"
-                  >
-                    Remove
-                  </button>
-                </div>
-
-                {/* Quantity */}
-                <div className="grid grid-cols-3 gap-3 mb-3">
-                  <div>
-                    <label className="text-xs font-medium text-gray-700 mb-1 block">Quantity</label>
-                    <input
-                      type="number"
-                      value={it.quantity}
-                      min={1}
-                      max={it.availableStock || 999999}
-                      onChange={(e) => {
-                        const val = Math.max(1, Number(e.target.value || 1));
-                        const capped = Math.min(val, it.availableStock || val);
-                        setFormData((prev: FormData) => {
-                          const items = (prev.products || []).slice() as any[];
-                          items[idx].quantity = capped;
-                          return { ...prev, products: items };
-                        });
-                      }}
-                      className="w-full px-2 py-2 border border-gray-300 rounded-lg font-medium"
-                    />
-                  </div>
-
-                  {/* Cost Price - LOCKED */}
-                  <div>
-                    <label className="text-xs font-medium text-red-700 mb-1 block">Cost Price (LOCKED)</label>
-                    <div className="px-2 py-2 border-2 border-red-300 bg-red-50 rounded-lg text-sm font-medium text-red-900">
-                      ₹ {Number(unitCostPrice).toFixed(2)}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">From: {it.baseCost === it.costPrice ? 'Base Cost' : 'FIFO Warehouse'}</div>
-                  </div>
-
-                  {/* Selling Price - UNLOCKED */}
-                  <div>
-                    <label className="text-xs font-medium text-green-700 mb-1 block">Selling Price (EDITABLE)</label>
-                    <input
-                      type="number"
-                      value={unitSellingPrice}
-                      step="0.01"
-                      min="0"
-                      onChange={(e) => {
-                        const newPrice = parseFloat(e.target.value || '0');
-                        setFormData((prev: FormData) => {
-                          const items = (prev.products || []).slice() as any[];
-                          items[idx].sellingPrice = newPrice;
-                          return { ...prev, products: items };
-                        });
-                      }}
-                      className="w-full px-2 py-2 border-2 border-green-300 bg-green-50 rounded-lg text-sm font-medium text-green-900"
-                    />
-                  </div>
-                </div>
-
-                {/* Price Tier Selection & Discount */}
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                  {it.priceTiers && it.priceTiers.length > 0 && (
-                    <div>
-                      <label className="text-xs font-medium text-gray-700 mb-1 block">Price Tier</label>
-                      <select
-                        value={it.selectedTier || 0}
-                        onChange={(e) => {
-                          const sel = Number(e.target.value || 0);
-                          setFormData((prev: FormData) => {
-                            const items = (prev.products || []).slice() as any[];
-                            items[idx].selectedTier = sel;
-                            const tierPrice = Number(items[idx].priceTiers[sel]?.price || items[idx].basePrice || 0);
-                            items[idx].sellingPrice = tierPrice;
-                            return { ...prev, products: items };
-                          });
-                        }}
-                        className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
-                      >
-                        {it.priceTiers.map((pt: any, i: number) => (
-                          <option key={i} value={i}>{pt.label} — ₹{pt.price}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  <div>
-                    <label className="text-xs font-medium text-gray-700 mb-1 block">Line Discount (Rs)</label>
-                    <input
-                      type="number"
-                      value={it.discount || 0}
-                      min={0}
-                      step="0.01"
-                      onChange={(e) => {
-                        const val = Number(e.target.value || 0);
-                        setFormData((prev: FormData) => {
-                          const items = (prev.products || []).slice() as any[];
-                          items[idx].discount = val;
-                          return { ...prev, products: items };
-                        });
-                      }}
-                      className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
-                    />
-                  </div>
-                </div>
-
-                {/* Summary Stats */}
-                <div className="grid grid-cols-4 gap-2 pt-2 border-t border-indigo-200">
-                  <div className="text-center">
-                    <div className="text-xs text-gray-600">Unit Profit</div>
-                    <div className={`text-sm font-bold ${unitProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      ₹ {unitProfit.toFixed(2)}
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xs text-gray-600">Qty</div>
-                    <div className="text-sm font-bold text-blue-600">{it.quantity}</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xs text-gray-600">Total Line</div>
-                    <div className="text-sm font-bold text-indigo-600">
-                      ₹ {(unitSellingPrice * (it.quantity || 1) - (it.discount || 0)).toFixed(2)}
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xs text-gray-600">Total Profit</div>
-                    <div className={`text-sm font-bold ${totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      ₹ {totalProfit.toFixed(2)}
-                    </div>
-                  </div>
-                </div>
+        <div className="mt-2 space-y-2">
+          {(formData.products || []).map((it: any, idx: number) => (
+            <div key={it.productId || idx} className="flex items-center gap-2 border rounded-lg p-2">
+              <div className="flex-1">
+                <div className="font-medium text-sm">{it.name}</div>
+                <div className="text-xs text-gray-500">Base: {it.basePrice}</div>
               </div>
-            );
-          })}
+              <div className="w-20">
+                <label className="text-xs text-gray-600">Qty</label>
+                <input
+                  type="number"
+                  value={it.quantity}
+                  min={1}
+                  max={it.availableStock || 999999}
+                  onChange={(e) => {
+                    const val = Math.max(1, Number(e.target.value || 1));
+                    const capped = Math.min(val, it.availableStock || val);
+                    setFormData((prev: FormData) => {
+                      const items = (prev.products || []).slice() as any[];
+                      items[idx].quantity = capped;
+                      // if price tiers exist, keep selected tier price, else use basePrice
+                      if (items[idx].priceTiers && items[idx].priceTiers.length > 0 && items[idx].selectedTier >= 0) {
+                        const sel = items[idx].selectedTier || 0;
+                        const tierPrice = Number(items[idx].priceTiers[sel]?.price || items[idx].basePrice || 0);
+                        // store unit price
+                        items[idx].sellingPrice = tierPrice;
+                      } else {
+                        // store unit price
+                        items[idx].sellingPrice = Number(items[idx].basePrice || 0);
+                      }
+                      // costPrice is unit cost
+                      items[idx].costPrice = Number(items[idx].baseCost || 0);
+                      return { ...prev, products: items };
+                    });
+                  }}
+                  className="w-full px-2 py-1 border rounded"
+                />
+                {it.availableStock !== undefined && (
+                  <div className="text-xs text-gray-500">Stock: {it.availableStock}</div>
+                )}
+              </div>
+              <div className="w-24">
+                <label className="text-xs text-gray-600">Disc</label>
+                <input
+                  type="number"
+                  value={it.discount || 0}
+                  min={0}
+                  onChange={(e) => {
+                    const val = Number(e.target.value || 0);
+                    setFormData((prev: FormData) => {
+                      const items = (prev.products || []).slice() as any[];
+                      items[idx].discount = val;
+                      return { ...prev, products: items };
+                    });
+                  }}
+                  className="w-full px-2 py-1 border rounded"
+                />
+                {it.priceTiers && it.priceTiers.length > 0 && (
+                  <div className="mt-2">
+                    <label className="text-xs text-gray-600">Price Tier</label>
+                    <select
+                      value={it.selectedTier || 0}
+                      onChange={(e) => {
+                        const sel = Number(e.target.value || 0);
+                        setFormData((prev: FormData) => {
+                          const items = (prev.products || []).slice() as any[];
+                          items[idx].selectedTier = sel;
+                          const tierPrice = Number(items[idx].priceTiers[sel]?.price || items[idx].basePrice || 0);
+                          // store unit price when a tier is selected
+                          items[idx].sellingPrice = tierPrice;
+                          return { ...prev, products: items };
+                        });
+                      }}
+                      className="w-full px-2 py-1 border rounded"
+                    >
+                      {it.priceTiers.map((pt: any, i: number) => (
+                        <option key={i} value={i}>{pt.label} — {pt.price}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+                <div className="w-28 text-right">
+                <div className="text-xs text-gray-600">Line</div>
+                <div className="font-medium">{
+                  (() => {
+                    const qty = Number(it.quantity || 0) || 0;
+                    let lineTotal = 0;
+                    if (it.priceTiers && Array.isArray(it.priceTiers) && (it.selectedTier !== undefined)) {
+                      const unit = Number(it.priceTiers[it.selectedTier]?.price || 0);
+                      lineTotal = unit * qty;
+                    } else if (it.sellingPrice !== undefined) {
+                      // sellingPrice is stored as unit price
+                      lineTotal = Number(it.sellingPrice || 0) * qty;
+                    } else {
+                      lineTotal = Number(it.basePrice || 0) * qty;
+                    }
+                    lineTotal = lineTotal - Number(it.discount || 0);
+                    return Math.round(lineTotal * 100) / 100;
+                  })()
+                }</div>
+              </div>
+              <button type="button" onClick={() => setFormData((prev: FormData) => ({ ...prev, products: (prev.products || []).filter((_, i) => i !== idx) }))} className="px-2 py-1 text-red-600">Remove</button>
+            </div>
+          ))}
         </div>
       )}
     </>
@@ -587,7 +480,7 @@ export default function OrderFormModal({
               required
               min="0"
               step="0.01"
-              // readOnly={(formData.businessType === 'Dates' && (formData.products || []).length > 0) ? true : false}
+              readOnly={(formData.businessType === 'Dates' && (formData.products || []).length > 0) ? true : false}
             />
           </div>
 
